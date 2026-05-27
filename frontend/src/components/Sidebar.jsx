@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { HyprLogo } from './HyprLogo';
-import { Icon } from '../lib/icons';
+import { HyprLogo } from './HyprLogo.jsx';
+import { Icon } from '../lib/icons.jsx';
 
 export function Sidebar({
   clients,

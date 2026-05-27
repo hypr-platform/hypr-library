@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Icon } from '../lib/icons';
-import { gradientFor, formatBytes, formatDate } from '../lib/utils';
-import { HyprLogo } from './HyprLogo';
+import { Icon } from '../lib/icons.jsx';
+import { gradientFor, formatBytes, formatDate } from '../lib/utils.js';
+import { HyprLogo } from './HyprLogo.jsx';
 
 export function PreviewModal({ deck, onClose }) {
   const [copied, setCopied] = useState(false);

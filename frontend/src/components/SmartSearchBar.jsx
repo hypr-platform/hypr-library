@@ -1,4 +1,4 @@
-import { Icon } from '../lib/icons';
+import { Icon } from '../lib/icons.jsx';
 
 export function SmartSearchBar({
   query,

@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from './hooks/useAuth';
-import { useTheme } from './hooks/useTheme';
-import { api, ApiError } from './lib/api';
-import { LoginScreen } from './components/LoginScreen';
-import { Sidebar } from './components/Sidebar';
-import { SmartSearchBar } from './components/SmartSearchBar';
-import { DeckCard } from './components/DeckCard';
-import { PreviewModal } from './components/PreviewModal';
-import { HyprLogo } from './components/HyprLogo';
-import { Icon } from './lib/icons';
+import { useState, useEffect } from 'react';
+import { useAuth } from './hooks/useAuth.js';
+import { useTheme } from './hooks/useTheme.js';
+import { api } from './lib/api.js';
+import { LoginScreen } from './components/LoginScreen.jsx';
+import { Sidebar } from './components/Sidebar.jsx';
+import { SmartSearchBar } from './components/SmartSearchBar.jsx';
+import { DeckCard } from './components/DeckCard.jsx';
+import { PreviewModal } from './components/PreviewModal.jsx';
+import { HyprLogo } from './components/HyprLogo.jsx';
+import { Icon } from './lib/icons.jsx';
 
 // Debounce para busca semântica (evita disparar request a cada tecla)
 function useDebounce(value, delay = 400) {

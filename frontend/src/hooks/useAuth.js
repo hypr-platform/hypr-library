@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
-import { setToken, clearToken } from '../lib/api';
+import { setToken, clearToken } from '../lib/api.js';
 
 const ALLOWED_HD = import.meta.env.VITE_ALLOWED_HD || 'hypr.mobi';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;

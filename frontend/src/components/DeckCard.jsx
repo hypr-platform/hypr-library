@@ -1,6 +1,6 @@
-import { Icon } from '../lib/icons';
-import { gradientFor, cleanTitle, formatBytes, formatDate } from '../lib/utils';
-import { HyprLogo } from './HyprLogo';
+import { Icon } from '../lib/icons.jsx';
+import { gradientFor, cleanTitle, formatBytes, formatDate } from '../lib/utils.js';
+import { HyprLogo } from './HyprLogo.jsx';
 
 export function DeckCard({ deck, onClick, showClientBadge }) {
   const gradient = gradientFor(deck.title);
