@@ -1,0 +1,13 @@
+# Não envia esses arquivos no deploy da Cloud Function
+.git/
+.gitignore
+README.md
+deploy.sh
+.env
+*.json
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+venv/
+.venv/
