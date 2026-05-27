@@ -58,6 +58,70 @@ class BigQueryClient:
         log.info(f"Inseridos {len(rows)} embeddings")
 
     # ============================================================
+    # INCREMENTAL OPERATIONS (sync por batches)
+    # ============================================================
+    def append_content(self, rows: list[dict]):
+        """Adiciona conteúdo incremental sem truncar a tabela."""
+        if not rows:
+            return
+        errors = self.client.insert_rows_json(self.tbl_content, rows)
+        if errors:
+            raise RuntimeError(f"Erro ao inserir content (append): {errors}")
+        log.info(f"Append: {len(rows)} novos textos em content")
+
+    def append_embeddings(self, rows: list[dict]):
+        """Adiciona embeddings incremental via load job (suporta ARRAY)."""
+        if not rows:
+            return
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        )
+        job = self.client.load_table_from_json(rows, self.tbl_emb, job_config=job_config)
+        job.result()
+        log.info(f"Append: {len(rows)} novos embeddings")
+
+    def list_decks_without_embeddings(self, limit: int = 30) -> list[dict]:
+        """Retorna decks que ainda não foram embedados."""
+        query = f"""
+        SELECT m.deck_id, m.client, m.title, m.mime_type
+        FROM `{self.tbl_meta}` m
+        LEFT JOIN `{self.tbl_emb}` e ON m.deck_id = e.deck_id
+        WHERE e.deck_id IS NULL
+        ORDER BY m.modified_time DESC
+        LIMIT @lim
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("lim", "INT64", limit)]
+        )
+        rows = self.client.query(query, job_config=job_config).result()
+        return [dict(r) for r in rows]
+
+    def count_decks_without_embeddings(self) -> int:
+        query = f"""
+        SELECT COUNT(*) AS cnt
+        FROM `{self.tbl_meta}` m
+        LEFT JOIN `{self.tbl_emb}` e ON m.deck_id = e.deck_id
+        WHERE e.deck_id IS NULL
+        """
+        rows = list(self.client.query(query).result())
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def count_decks_with_embeddings(self) -> int:
+        query = f"SELECT COUNT(*) AS cnt FROM `{self.tbl_emb}`"
+        rows = list(self.client.query(query).result())
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def count_total_decks(self) -> int:
+        query = f"SELECT COUNT(*) AS cnt FROM `{self.tbl_meta}`"
+        rows = list(self.client.query(query).result())
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def count_distinct_clients(self) -> int:
+        query = f"SELECT COUNT(DISTINCT client) AS cnt FROM `{self.tbl_meta}`"
+        rows = list(self.client.query(query).result())
+        return int(rows[0]["cnt"]) if rows else 0
+
+    # ============================================================
     # READ OPERATIONS (usado pelos endpoints)
     # ============================================================
     def list_clients(self) -> list[dict]:

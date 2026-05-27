@@ -27,7 +27,12 @@ from google.oauth2 import id_token
 from drive_client import DriveClient
 from bigquery_client import BigQueryClient
 from embeddings import EmbeddingGenerator
-from sync import run_full_sync
+from sync import (
+    run_full_sync,
+    sync_metadata,
+    sync_embeddings_batch,
+    sync_status,
+)
 
 # ============================================================
 # CONFIG
@@ -168,7 +173,49 @@ def biblioteca_data(req):
     if path == "/health" or path == "":
         return json_response({"status": "ok", "service": "biblioteca-hypr"}, origin=origin)
 
-    # Sync (autenticado via secret)
+    # Sync metadata (autenticado via secret) — rápido, lista todos decks
+    if path == "/sync/metadata" and req.method == "POST":
+        if not verify_sync_secret(req):
+            return json_response({"error": "unauthorized"}, 401, origin)
+        try:
+            result = sync_metadata(
+                drive=get_drive(),
+                bq=get_bq(),
+                root_folder_id=DRIVE_ROOT_FOLDER_ID,
+            )
+            return json_response(result, origin=origin)
+        except Exception as e:
+            log.exception("Sync metadata failed")
+            return json_response({"error": str(e)}, 500, origin)
+
+    # Sync embeddings (autenticado via secret) — processa um batch
+    if path == "/sync/embeddings" and req.method == "POST":
+        if not verify_sync_secret(req):
+            return json_response({"error": "unauthorized"}, 401, origin)
+        body = req.get_json(silent=True) or {}
+        batch_size = int(body.get("batch_size", 30))
+        try:
+            result = sync_embeddings_batch(
+                drive=get_drive(),
+                bq=get_bq(),
+                embedder=get_embedder(),
+                batch_size=batch_size,
+            )
+            return json_response(result, origin=origin)
+        except Exception as e:
+            log.exception("Sync embeddings failed")
+            return json_response({"error": str(e)}, 500, origin)
+
+    # Sync status (público — só lê contadores) — útil pra acompanhar progresso
+    if path == "/sync/status" and req.method == "GET":
+        try:
+            result = sync_status(get_bq())
+            return json_response(result, origin=origin)
+        except Exception as e:
+            log.exception("Sync status failed")
+            return json_response({"error": str(e)}, 500, origin)
+
+    # Sync legado (autenticado via secret) — mantido pra retrocompatibilidade
     if path == "/sync" and req.method == "POST":
         if not verify_sync_secret(req):
             return json_response({"error": "unauthorized"}, 401, origin)
