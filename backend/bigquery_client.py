@@ -388,11 +388,14 @@ class BigQueryClient:
             *,
             -- Score combinado: texto pesa 10x (título) + 3x (conteúdo) + 1x (semântica)
             (title_match * 10) + (content_match * 3) + COALESCE(semantic_score, 0) AS final_score,
-            -- Flag: tem QUALQUER tipo de match relevante?
+            -- Tier de match:
+            --   2 = match textual em qualquer lugar (título ou conteúdo) — sempre vem antes
+            --   1 = match semântico forte (>= 0.72) — só pega resultados muito próximos
+            --   0 = irrelevante (descartado)
             CASE
-              WHEN title_match > 0 OR content_match > 0 THEN 2  -- match textual = top tier
-              WHEN semantic_score > 0.55 THEN 1                  -- match semântico bom
-              ELSE 0                                              -- match semântico fraco
+              WHEN title_match > 0 OR content_match > 0 THEN 2
+              WHEN semantic_score >= 0.72 THEN 1
+              ELSE 0
             END AS match_tier
           FROM ranked
         )
@@ -403,11 +406,11 @@ class BigQueryClient:
           distance,
           final_score AS score
         FROM scored
-        WHERE match_tier > 0  -- exclui resultados sem relevância nenhuma
+        WHERE match_tier > 0  -- exclui resultados sem relevância
         ORDER BY
-          match_tier DESC,           -- primeiro os com match textual
-          modified_time DESC NULLS LAST,  -- depois pela data
-          final_score DESC            -- desempate por score
+          match_tier DESC,            -- match textual sempre vem antes do puramente semântico
+          modified_time DESC NULLS LAST,  -- dentro de cada tier, ordem cronológica estrita (mais novo primeiro)
+          final_score DESC             -- desempate quando data é igual
         LIMIT @limit
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
