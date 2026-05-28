@@ -284,6 +284,7 @@ def biblioteca_data(req):
                 query_embedding=query_embedding,
                 client_filter=client_filter,
                 limit=limit,
+                query_text=query,
             )
             return json_response({
                 "query": query,

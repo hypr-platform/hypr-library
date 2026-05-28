@@ -311,17 +311,108 @@ class BigQueryClient:
         query_embedding: list[float],
         client_filter: Optional[str] = None,
         limit: int = 20,
+        query_text: Optional[str] = None,
     ) -> list[dict]:
         """
-        Busca semântica via cosine distance.
-        Usa VECTOR_SEARCH se o index existir, fallback pra ML.DISTANCE.
+        Busca HÍBRIDA: combina match textual (título + conteúdo) com semântica.
+
+        Estratégia:
+        1. Score de match textual: 1.0 se título contém query, 0.6 se conteúdo contém, 0
+        2. Score semântico: 1 - cosine_distance
+        3. Score final: combinação ponderada (texto pesa 2x mais que semântica)
+        4. Ordena: prioriza decks com match textual, depois ordena por data DESC
+
+        Sempre retorna ordem cronológica (mais novo primeiro) dentro de cada bucket.
         """
-        # Tenta VECTOR_SEARCH primeiro (mais performático, requer índice)
         try:
-            return self._vector_search(query_embedding, client_filter, limit)
+            return self._hybrid_search(query_embedding, query_text, client_filter, limit)
         except Exception as e:
-            log.warning(f"VECTOR_SEARCH falhou ({e}), fallback pra ML.DISTANCE")
-            return self._distance_search(query_embedding, client_filter, limit)
+            log.exception(f"[Search] H1 falhou ({e}), fallback pra busca pura semântica")
+            try:
+                return self._vector_search(query_embedding, client_filter, limit)
+            except Exception as e2:
+                log.warning(f"[Search] VECTOR_SEARCH também falhou ({e2}), fallback ML.DISTANCE")
+                return self._distance_search(query_embedding, client_filter, limit)
+
+    def _hybrid_search(self, query_embedding, query_text, client_filter, limit):
+        """
+        Busca híbrida real:
+        - title_match: 1.0 se título contém query (case-insensitive), 0 senão
+        - content_match: 1.0 se conteúdo contém query, 0 senão
+        - semantic_score: 1 - cosine_distance (precisa do embedding)
+        - boost score: title_match * 10 + content_match * 3 + semantic_score
+        - rank final: ordena por (has_text_match DESC, modified_time DESC, semantic_score DESC)
+        """
+        # Normaliza query pra match textual
+        query_clean = (query_text or "").strip().lower() if query_text else ""
+
+        filter_clause = ""
+        params = [
+            bigquery.ArrayQueryParameter("query_emb", "FLOAT64", query_embedding),
+            bigquery.ScalarQueryParameter("query_text", "STRING", query_clean),
+            bigquery.ScalarQueryParameter("limit", "INT64", limit),
+        ]
+        if client_filter:
+            filter_clause = "AND m.client = @client"
+            params.append(bigquery.ScalarQueryParameter("client", "STRING", client_filter))
+
+        # Aproxima busca textual + semântica em uma única query
+        # LEFT JOIN com embeddings: decks sem embedding ainda aparecem se houver match textual
+        # LEFT JOIN com content: aceita ambos casos (com ou sem conteúdo extraído)
+        query = f"""
+        WITH ranked AS (
+          SELECT
+            m.deck_id, m.client, m.title,
+            m.drive_url, m.thumbnail_url,
+            m.owner_name, m.size_bytes, m.modified_time, m.mime_type,
+            -- Match no título (case-insensitive)
+            CAST(LOWER(m.title) LIKE CONCAT('%', @query_text, '%') AS INT64) AS title_match,
+            -- Match no conteúdo
+            CAST(COALESCE(LOWER(c.full_text), '') LIKE CONCAT('%', @query_text, '%') AS INT64) AS content_match,
+            -- Score semântico (1 - cosine, NULL se sem embedding)
+            CASE
+              WHEN e.embedding IS NOT NULL THEN 1 - ML.DISTANCE(e.embedding, @query_emb, 'COSINE')
+              ELSE NULL
+            END AS semantic_score,
+            CASE
+              WHEN e.embedding IS NOT NULL THEN ML.DISTANCE(e.embedding, @query_emb, 'COSINE')
+              ELSE 1.0
+            END AS distance
+          FROM `{self.tbl_meta}` m
+          LEFT JOIN `{self.tbl_content}` c ON m.deck_id = c.deck_id
+          LEFT JOIN `{self.tbl_emb}` e ON m.deck_id = e.deck_id
+          WHERE 1=1 {filter_clause}
+        ),
+        scored AS (
+          SELECT
+            *,
+            -- Score combinado: texto pesa 10x (título) + 3x (conteúdo) + 1x (semântica)
+            (title_match * 10) + (content_match * 3) + COALESCE(semantic_score, 0) AS final_score,
+            -- Flag: tem QUALQUER tipo de match relevante?
+            CASE
+              WHEN title_match > 0 OR content_match > 0 THEN 2  -- match textual = top tier
+              WHEN semantic_score > 0.55 THEN 1                  -- match semântico bom
+              ELSE 0                                              -- match semântico fraco
+            END AS match_tier
+          FROM ranked
+        )
+        SELECT
+          deck_id, client, title,
+          drive_url, thumbnail_url,
+          owner_name, size_bytes, modified_time, mime_type,
+          distance,
+          final_score AS score
+        FROM scored
+        WHERE match_tier > 0  -- exclui resultados sem relevância nenhuma
+        ORDER BY
+          match_tier DESC,           -- primeiro os com match textual
+          modified_time DESC NULLS LAST,  -- depois pela data
+          final_score DESC            -- desempate por score
+        LIMIT @limit
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        rows = self.client.query(query, job_config=job_config).result()
+        return [self._row_to_search_result(r) for r in rows]
 
     def _vector_search(self, query_embedding, client_filter, limit):
         """

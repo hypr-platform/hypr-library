@@ -72,7 +72,7 @@ export function SmartSearchBar({
       {query && (
         <div className="mt-2.5 text-[11px] text-ink-400 dark:text-ink-400 flex items-center gap-1.5 px-1 animate-fade-in tracking-wide">
           <div className="w-1 h-1 rounded-full bg-hypr-cyan"></div>
-          BUSCA SEMÂNTICA · RESULTADOS ORDENADOS POR DATA
+          BUSCA HÍBRIDA · TEXTO + SEMÂNTICA · ORDEM POR DATA
         </div>
       )}
 
