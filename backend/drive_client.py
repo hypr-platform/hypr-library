@@ -42,6 +42,7 @@ class DriveClient:
         credentials, _ = default(
             scopes=["https://www.googleapis.com/auth/drive.readonly"]
         )
+        self._creds = credentials
         self.service = build("drive", "v3", credentials=credentials, cache_discovery=False)
 
     def _with_retry(self, func, max_retries=3):
@@ -199,6 +200,53 @@ class DriveClient:
         ou use Slides API pra gerar URL do slide 1.
         """
         return file.get("thumbnailLink")
+
+    def fetch_thumbnail_bytes(self, file_id: str, size: int = 600) -> Optional[tuple[bytes, str]]:
+        """
+        Busca a thumbnail FRESCA de um arquivo via Drive API.
+        Retorna (bytes, content_type) ou None se não houver.
+
+        Diferente do thumbnailLink salvo (que expira em ~1h), este método
+        pega o link no momento da chamada e baixa a imagem na hora.
+        O parâmetro `size` controla a largura (Drive aceita =sNNN no fim da URL).
+        """
+        import urllib.request
+
+        def call():
+            return self.service.files().get(
+                fileId=file_id,
+                fields="thumbnailLink, mimeType",
+            ).execute()
+
+        try:
+            meta = self._with_retry(call)
+        except HttpError as e:
+            log.warning(f"[Thumbnail] Erro ao buscar metadata de {file_id}: {e}")
+            return None
+
+        thumb_link = meta.get("thumbnailLink")
+        if not thumb_link:
+            return None
+
+        # Drive thumbnailLink termina com '=s220' (tamanho). Troca pelo tamanho desejado.
+        if "=s" in thumb_link:
+            thumb_link = thumb_link.rsplit("=s", 1)[0] + f"=s{size}"
+
+        # Baixa a imagem usando as credenciais da service account
+        try:
+            from google.auth.transport.requests import Request as AuthRequest
+            # Garante que o token está fresco
+            if not self._creds.valid:
+                self._creds.refresh(AuthRequest())
+            headers = {"Authorization": f"Bearer {self._creds.token}"}
+            req = urllib.request.Request(thumb_link, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
+                data = resp.read()
+                return (data, content_type)
+        except Exception as e:
+            log.warning(f"[Thumbnail] Falha ao baixar thumbnail de {file_id}: {e}")
+            return None
 
     def get_preview_embed_url(self, file_id: str, mime_type: str) -> str:
         """URL pra iframe embed do preview."""

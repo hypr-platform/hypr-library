@@ -75,6 +75,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ query, client: clientFilter, limit }),
     }),
+  // URL do proxy de thumbnail (servida pelo backend, com cache de 7 dias).
+  // Não usa fetch() — vai direto no src de uma <img>.
+  thumbnailUrl: (deckId, size = 600) =>
+    `${API_URL}/thumbnail/${deckId}?size=${size}`,
 };
 
 export { ApiError };

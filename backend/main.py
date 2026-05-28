@@ -173,6 +173,31 @@ def biblioteca_data(req):
     if path == "/health" or path == "":
         return json_response({"status": "ok", "service": "biblioteca-hypr"}, origin=origin)
 
+    # Thumbnail proxy (público — serve imagem com cache forte)
+    # <img> tags não mandam Authorization header, então este endpoint é aberto.
+    # Risco baixo: só serve thumbnails de decks já indexados, sem dados sensíveis.
+    if path.startswith("/thumbnail/") and req.method == "GET":
+        deck_id = path[len("/thumbnail/"):]
+        if not deck_id:
+            return json_response({"error": "deck_id required"}, 400, origin)
+        try:
+            size = int(req.args.get("size", 600))
+            result = get_drive().fetch_thumbnail_bytes(deck_id, size=size)
+            if result is None:
+                # Sem thumbnail — retorna 404 pro frontend usar fallback
+                return Response("", status=404, headers=cors_headers(origin))
+            data, content_type = result
+            headers = {
+                **cors_headers(origin),
+                "Content-Type": content_type,
+                # Cache forte: 7 dias no browser + CDN. Thumbnails mudam raramente.
+                "Cache-Control": "public, max-age=604800, immutable",
+            }
+            return Response(data, status=200, headers=headers)
+        except Exception as e:
+            log.warning(f"Thumbnail erro pra {deck_id}: {e}")
+            return Response("", status=404, headers=cors_headers(origin))
+
     # Sync metadata (autenticado via secret) — rápido, lista todos decks
     if path == "/sync/metadata" and req.method == "POST":
         if not verify_sync_secret(req):
