@@ -6,6 +6,7 @@ export function Sidebar({
   clients,
   activeClient,
   onSelect,
+  onHome,
   dark,
   onToggleDark,
   user,
@@ -34,19 +35,23 @@ export function Sidebar({
     <aside className="w-64 shrink-0 border-r border-ink-200 dark:border-ink-700/40 bg-ink-50 dark:bg-ink-900 flex flex-col h-screen">
       {/* Brand + Theme toggle */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-ink-200/60 dark:border-ink-700/30">
-        <div className="flex items-center gap-2.5">
+        <button
+          onClick={onHome}
+          className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+          aria-label="Voltar para Início"
+        >
           <div className="w-8 h-8 rounded-md bg-ink-dark dark:bg-white flex items-center justify-center">
             <span className="text-white dark:text-ink-900 font-medium text-[11px] tracking-wider">
               BH
             </span>
           </div>
-          <div className="flex flex-col leading-tight">
+          <div className="flex flex-col leading-tight items-start">
             <HyprLogo size="sm" />
             <span className="text-[10px] text-ink-400 tracking-[0.18em] mt-0.5">
               BIBLIOTECA
             </span>
           </div>
-        </div>
+        </button>
         <button
           onClick={onToggleDark}
           className="w-8 h-8 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-white dark:hover:bg-ink-800 transition-colors flex items-center justify-center text-ink-500 dark:text-ink-400"
@@ -74,6 +79,29 @@ export function Sidebar({
 
       {/* Label */}
       <div className="px-5 pt-3 pb-1.5 flex items-center gap-2">
+        <div className="w-0.5 h-3 bg-hypr-cyan"></div>
+        <div className="text-[10px] tracking-[0.2em] font-medium text-ink-500 dark:text-ink-400">
+          NAVEGAÇÃO
+        </div>
+      </div>
+
+      {/* Home button */}
+      <div className="px-2">
+        <button
+          onClick={onHome}
+          className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-all flex items-center gap-2 group ${
+            activeClient === null
+              ? 'bg-hypr-cyan/10 dark:bg-hypr-cyan/15 text-hypr-cyan font-medium border-l-2 border-hypr-cyan -ml-[2px] pl-[14px]'
+              : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-800/40 hover:text-ink-900 dark:hover:text-ink-50 font-normal border-l-2 border-transparent -ml-[2px] pl-[14px]'
+          }`}
+        >
+          <Icon.Sparkles />
+          <span>Início</span>
+        </button>
+      </div>
+
+      {/* Label CLIENTES */}
+      <div className="px-5 pt-4 pb-1.5 flex items-center gap-2">
         <div className="w-0.5 h-3 bg-hypr-cyan"></div>
         <div className="text-[10px] tracking-[0.2em] font-medium text-ink-500 dark:text-ink-400">
           CLIENTES{' '}

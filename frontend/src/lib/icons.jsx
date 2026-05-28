@@ -126,4 +126,30 @@ export const Icon = {
       <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
     </>
   ),
+  Users: make(
+    16,
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  Database: make(
+    16,
+    <>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+      <path d="M3 12A9 3 0 0 0 21 12" />
+    </>
+  ),
+  PresentationSm: make(
+    16,
+    <>
+      <path d="M2 3h20" />
+      <path d="M21 3v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3" />
+      <path d="m7 21 5-6 5 6" />
+      <path d="M12 15v6" />
+    </>
+  ),
 };

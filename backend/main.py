@@ -241,6 +241,17 @@ def biblioteca_data(req):
         clients = get_bq().list_clients()
         return json_response({"clients": clients}, origin=origin)
 
+    # Stats da biblioteca (pra dashboard de home)
+    if path == "/stats" and req.method == "GET":
+        stats = get_bq().get_library_stats()
+        return json_response(stats, origin=origin)
+
+    # Decks recentes (pra grid de home)
+    if path == "/recent" and req.method == "GET":
+        limit = int(req.args.get("limit", 20))
+        decks = get_bq().list_recent_decks(limit=limit)
+        return json_response({"decks": decks}, origin=origin)
+
     # Decks por cliente
     if path == "/decks" and req.method == "GET":
         client_name = req.args.get("client")

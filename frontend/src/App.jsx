@@ -8,6 +8,7 @@ import { SmartSearchBar } from './components/SmartSearchBar.jsx';
 import { DeckCard } from './components/DeckCard.jsx';
 import { PreviewModal } from './components/PreviewModal.jsx';
 import { HyprLogo } from './components/HyprLogo.jsx';
+import { HomeDashboard } from './components/HomeDashboard.jsx';
 import { Icon } from './lib/icons.jsx';
 
 // Debounce para busca semântica (evita disparar request a cada tecla)
@@ -25,12 +26,18 @@ export default function App() {
   const [dark, toggleDark] = useTheme();
 
   const [clients, setClients] = useState([]);
+  // activeClient === null → tela inicial (Home)
   const [activeClient, setActiveClient] = useState(null);
   const [decks, setDecks] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchScope, setSearchScope] = useState('all');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedDeck, setSelectedDeck] = useState(null);
+
+  // Estado da Home (dashboard quando nenhum cliente selecionado)
+  const [stats, setStats] = useState(null);
+  const [recentDecks, setRecentDecks] = useState([]);
+  const [loadingHome, setLoadingHome] = useState(false);
 
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingDecks, setLoadingDecks] = useState(false);
@@ -47,19 +54,32 @@ export default function App() {
       .clients()
       .then((data) => {
         setClients(data.clients);
-        if (data.clients.length > 0 && !activeClient) {
-          setActiveClient(data.clients[0].name);
-        }
+        // Não auto-seleciona mais nenhum cliente — fica na Home por padrão
       })
       .catch((e) => {
         console.error('Falha ao carregar clientes:', e);
         setApiError(e.message);
       })
       .finally(() => setLoadingClients(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // 2) Carrega decks do cliente ativo
+  // 2) Carrega stats + recentes ao mostrar a Home
+  useEffect(() => {
+    if (!user || activeClient !== null) return;
+    setLoadingHome(true);
+    Promise.all([api.stats(), api.recent(18)])
+      .then(([statsData, recentData]) => {
+        setStats(statsData);
+        setRecentDecks(recentData.decks);
+      })
+      .catch((e) => {
+        console.error('Falha ao carregar home:', e);
+        setApiError(e.message);
+      })
+      .finally(() => setLoadingHome(false));
+  }, [user, activeClient]);
+
+  // 3) Carrega decks do cliente ativo
   useEffect(() => {
     if (!user || !activeClient) return;
     setLoadingDecks(true);
@@ -73,7 +93,7 @@ export default function App() {
       .finally(() => setLoadingDecks(false));
   }, [user, activeClient]);
 
-  // 3) Busca semântica quando query muda
+  // 4) Busca semântica quando query muda
   useEffect(() => {
     if (!debouncedQuery.trim()) {
       setSearchResults([]);
@@ -110,8 +130,44 @@ export default function App() {
   // MAIN APP
   // ============================================================
   const isSearchActive = debouncedQuery.trim().length > 0;
+  const isHome = !activeClient && !isSearchActive;
   const displayedDecks = isSearchActive ? searchResults : decks;
   const showClientBadge = isSearchActive && searchScope === 'all';
+
+  // Título e label do header
+  let sectionLabel, sectionTitle;
+  if (isSearchActive && searchScope === 'all') {
+    sectionLabel = 'BUSCA EM TODA BIBLIOTECA';
+    sectionTitle = (
+      <>
+        Busca <span className="text-hypr-cyan font-light">semântica</span>
+      </>
+    );
+  } else if (isSearchActive && searchScope === 'client') {
+    sectionLabel = `BUSCA EM ${activeClient?.toUpperCase()}`;
+    sectionTitle = (
+      <>
+        Busca <span className="text-hypr-cyan font-light">semântica</span>
+      </>
+    );
+  } else if (isHome) {
+    sectionLabel = 'VISÃO GERAL';
+    sectionTitle = <span className="font-light">Biblioteca HYPR</span>;
+  } else {
+    sectionLabel = 'CLIENTE SELECIONADO';
+    sectionTitle = <span className="font-light">{activeClient}</span>;
+  }
+
+  // Contador de decks no badge superior
+  let deckBadgeCount;
+  if (isSearchActive) {
+    deckBadgeCount = displayedDecks.length;
+  } else if (isHome) {
+    deckBadgeCount = stats?.total_decks ?? '—';
+  } else {
+    deckBadgeCount = displayedDecks.length;
+  }
+  const deckBadgeLabel = deckBadgeCount === 1 ? 'DECK' : 'DECKS';
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-ink-900">
@@ -120,6 +176,10 @@ export default function App() {
         activeClient={activeClient}
         onSelect={(c) => {
           setActiveClient(c);
+          setSearchQuery('');
+        }}
+        onHome={() => {
+          setActiveClient(null);
           setSearchQuery('');
         }}
         dark={dark}
@@ -132,7 +192,15 @@ export default function App() {
         {/* Top breadcrumb */}
         <div className="border-b border-ink-200/60 dark:border-ink-700/30 px-10 py-3.5 flex items-center justify-between bg-white dark:bg-ink-900">
           <div className="flex items-center gap-2 text-[11px] text-ink-400 dark:text-ink-500 tracking-wider">
-            <span>BIBLIOTECA</span>
+            <button
+              onClick={() => {
+                setActiveClient(null);
+                setSearchQuery('');
+              }}
+              className="hover:text-ink-700 dark:hover:text-ink-200 transition-colors"
+            >
+              BIBLIOTECA
+            </button>
             <span className="text-ink-300 dark:text-ink-700">/</span>
             <span className="text-ink-700 dark:text-ink-200 font-medium">
               AUDIENCE DISCOVERY
@@ -148,23 +216,15 @@ export default function App() {
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-0.5 h-5 bg-hypr-cyan"></div>
                 <div className="text-[10px] tracking-[0.22em] font-medium text-ink-500 dark:text-ink-400">
-                  {isSearchActive && searchScope === 'all'
-                    ? 'BUSCA EM TODA BIBLIOTECA'
-                    : 'CLIENTE SELECIONADO'}
+                  {sectionLabel}
                 </div>
               </div>
               <h1 className="text-[28px] font-light text-ink-900 dark:text-ink-50 tracking-tight leading-none">
-                {isSearchActive && searchScope === 'all' ? (
-                  <>
-                    Busca <span className="text-hypr-cyan font-light">semântica</span>
-                  </>
-                ) : (
-                  <span className="font-light">{activeClient || 'Carregando…'}</span>
-                )}
+                {sectionTitle}
               </h1>
             </div>
             <div className="text-[11px] text-ink-500 dark:text-ink-400 px-3 py-1.5 rounded-md bg-ink-100/60 dark:bg-ink-800/40 font-medium tracking-wide border border-ink-200/40 dark:border-ink-700/30">
-              {displayedDecks.length} {displayedDecks.length === 1 ? 'DECK' : 'DECKS'}
+              {deckBadgeCount} {deckBadgeLabel}
             </div>
           </div>
 
@@ -175,6 +235,7 @@ export default function App() {
             onScopeChange={setSearchScope}
             activeClient={activeClient}
             isSearching={isSearching}
+            showSuggestions={true}
           />
 
           {apiError && (
@@ -183,23 +244,15 @@ export default function App() {
             </div>
           )}
 
-          {/* Grid */}
-          {(loadingDecks || loadingClients) && !isSearchActive ? (
-            <LoadingGrid />
-          ) : (
+          {/* Conteúdo principal: 3 modos */}
+          {isSearchActive ? (
+            // Modo BUSCA
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {displayedDecks.length === 0 && isSearchActive && !isSearching && (
+              {displayedDecks.length === 0 && !isSearching && (
                 <EmptyState
                   icon={<Icon.SearchOff />}
                   title="Nenhum deck encontrado"
                   subtitle="Tenta termos mais amplos como 'jovem', 'esporte', 'premium'"
-                />
-              )}
-              {displayedDecks.length === 0 && !isSearchActive && !loadingDecks && (
-                <EmptyState
-                  icon={<Icon.Presentation />}
-                  title="Sem decks para este cliente"
-                  subtitle="A pasta deste cliente ainda não tem audience discoveries indexadas"
                 />
               )}
               {displayedDecks.map((deck) => (
@@ -211,6 +264,37 @@ export default function App() {
                 />
               ))}
             </div>
+          ) : isHome ? (
+            // Modo HOME (dashboard de visão geral)
+            <HomeDashboard
+              stats={stats}
+              recentDecks={recentDecks}
+              onDeckClick={setSelectedDeck}
+              loading={loadingHome}
+            />
+          ) : (
+            // Modo CLIENTE selecionado
+            loadingDecks || loadingClients ? (
+              <LoadingGrid />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {displayedDecks.length === 0 && (
+                  <EmptyState
+                    icon={<Icon.Presentation />}
+                    title="Sem decks para este cliente"
+                    subtitle="A pasta deste cliente ainda não tem audience discoveries de 2025+ indexadas"
+                  />
+                )}
+                {displayedDecks.map((deck) => (
+                  <DeckCard
+                    key={deck.deck_id}
+                    deck={deck}
+                    showClientBadge={showClientBadge}
+                    onClick={() => setSelectedDeck(deck)}
+                  />
+                ))}
+              </div>
+            )
           )}
 
           {/* Footer */}

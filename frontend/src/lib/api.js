@@ -66,6 +66,8 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/health'),
   clients: () => request('/clients'),
+  stats: () => request('/stats'),
+  recent: (limit = 20) => request(`/recent?limit=${limit}`),
   decks: (client) => request(`/decks?client=${encodeURIComponent(client)}`),
   deck: (deckId) => request(`/deck/${deckId}`),
   search: (query, clientFilter = null, limit = 20) =>

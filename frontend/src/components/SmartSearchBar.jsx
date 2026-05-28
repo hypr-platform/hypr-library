@@ -1,5 +1,15 @@
 import { Icon } from '../lib/icons.jsx';
 
+// Chips de busca sugeridos — mostrados quando não há query ativa
+const SEARCH_SUGGESTIONS = [
+  'gen z e moda',
+  'alta renda automobilismo',
+  'corredores e fitness',
+  'gamers mobile',
+  'campanhas back-to-school',
+  'fintech e bancarizado',
+];
+
 export function SmartSearchBar({
   query,
   onChange,
@@ -7,6 +17,7 @@ export function SmartSearchBar({
   onScopeChange,
   activeClient,
   isSearching,
+  showSuggestions = true,
 }) {
   return (
     <div className="mb-6">
@@ -56,10 +67,33 @@ export function SmartSearchBar({
           </button>
         </div>
       </div>
+
+      {/* Estado: busca ativa → mostra info de relevância */}
       {query && (
         <div className="mt-2.5 text-[11px] text-ink-400 dark:text-ink-400 flex items-center gap-1.5 px-1 animate-fade-in tracking-wide">
           <div className="w-1 h-1 rounded-full bg-hypr-cyan"></div>
-          BUSCA SEMÂNTICA · RESULTADOS ORDENADOS POR RELEVÂNCIA
+          BUSCA SEMÂNTICA · RESULTADOS ORDENADOS POR DATA
+        </div>
+      )}
+
+      {/* Estado: sem busca → mostra chips de sugestão */}
+      {!query && showSuggestions && (
+        <div className="mt-3 flex flex-wrap gap-2 animate-fade-in">
+          <span className="text-[10px] tracking-[0.18em] font-medium text-ink-400 dark:text-ink-500 self-center mr-1">
+            SUGESTÕES
+          </span>
+          {SEARCH_SUGGESTIONS.map((suggestion) => (
+            <button
+              key={suggestion}
+              onClick={() => onChange(suggestion)}
+              className="group inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-ink-100/60 dark:bg-ink-800/40 border border-ink-200/80 dark:border-ink-700/40 text-[12px] font-normal text-ink-700 dark:text-ink-300 hover:bg-hypr-cyan/10 hover:border-hypr-cyan/40 hover:text-hypr-cyan transition-all"
+            >
+              <span className="text-hypr-cyan/70 group-hover:text-hypr-cyan transition-colors">
+                <Icon.Sparkles />
+              </span>
+              {suggestion}
+            </button>
+          ))}
         </div>
       )}
     </div>
