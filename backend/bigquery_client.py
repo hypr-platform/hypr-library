@@ -205,7 +205,11 @@ class BigQueryClient:
             return self._distance_search(query_embedding, client_filter, limit)
 
     def _vector_search(self, query_embedding, client_filter, limit):
-        """Busca usando VECTOR_SEARCH (requer índice criado)."""
+        """
+        Busca usando VECTOR_SEARCH (requer índice criado).
+        Estratégia: pega top K candidatos pela similaridade semântica,
+        depois ordena por data (mais novo primeiro) na resposta final.
+        """
         filter_clause = ""
         params = [
             bigquery.ArrayQueryParameter("query_emb", "FLOAT64", query_embedding),
@@ -234,14 +238,17 @@ class BigQueryClient:
           distance_type => 'COSINE'
         ) vs
         JOIN `{self.tbl_meta}` m ON m.deck_id = vs.base.deck_id
-        ORDER BY vs.distance ASC
+        ORDER BY m.modified_time DESC NULLS LAST, vs.distance ASC
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
         rows = self.client.query(query, job_config=job_config).result()
         return [self._row_to_search_result(r) for r in rows]
 
     def _distance_search(self, query_embedding, client_filter, limit):
-        """Fallback: cálculo direto de cosine distance via ML.DISTANCE."""
+        """
+        Fallback: cálculo direto de cosine distance via ML.DISTANCE.
+        Mesma estratégia: filtra os top K relevantes, ordena por data.
+        """
         filter_clause = "WHERE 1=1"
         params = [
             bigquery.ArrayQueryParameter("query_emb", "FLOAT64", query_embedding),
@@ -252,17 +259,21 @@ class BigQueryClient:
             params.append(bigquery.ScalarQueryParameter("client", "STRING", client_filter))
 
         query = f"""
-        SELECT
-          m.deck_id, m.client, m.title,
-          m.drive_url, m.thumbnail_url,
-          m.owner_name, m.size_bytes, m.modified_time, m.mime_type,
-          ML.DISTANCE(e.embedding, @query_emb, 'COSINE') AS distance,
-          (1 - ML.DISTANCE(e.embedding, @query_emb, 'COSINE')) AS score
-        FROM `{self.tbl_emb}` e
-        JOIN `{self.tbl_meta}` m ON m.deck_id = e.deck_id
-        {filter_clause}
-        ORDER BY distance ASC
-        LIMIT @limit
+        WITH candidates AS (
+          SELECT
+            m.deck_id, m.client, m.title,
+            m.drive_url, m.thumbnail_url,
+            m.owner_name, m.size_bytes, m.modified_time, m.mime_type,
+            ML.DISTANCE(e.embedding, @query_emb, 'COSINE') AS distance,
+            (1 - ML.DISTANCE(e.embedding, @query_emb, 'COSINE')) AS score
+          FROM `{self.tbl_emb}` e
+          JOIN `{self.tbl_meta}` m ON m.deck_id = e.deck_id
+          {filter_clause}
+          ORDER BY distance ASC
+          LIMIT @limit
+        )
+        SELECT * FROM candidates
+        ORDER BY modified_time DESC NULLS LAST, distance ASC
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
         rows = self.client.query(query, job_config=job_config).result()

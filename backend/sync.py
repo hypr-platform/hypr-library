@@ -64,6 +64,7 @@ def sync_metadata(drive, bq, root_folder_id: str) -> dict:
             "owner_name": owner.get("displayName"),
             "owner_email": owner.get("emailAddress"),
             "size_bytes": _extract_size_bytes(file.get("size")),
+            "created_time": file.get("createdTime"),
             "modified_time": file.get("modifiedTime"),
             "mime_type": file["mimeType"],
             "client_folder_id": file.get("_client_folder_id"),

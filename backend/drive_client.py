@@ -25,6 +25,17 @@ MIME_PDF = "application/pdf"
 # Valid deck mime types
 DECK_MIMES = {MIME_SLIDES, MIME_PPTX, MIME_PDF}
 
+# Cutoff: só processa decks de 2025+ (criados OU modificados)
+CUTOFF_DATE = "2025-01-01T00:00:00Z"
+
+
+def _is_recent(file: dict) -> bool:
+    """Retorna True se o arquivo foi criado OU modificado em 2025+."""
+    created = file.get("createdTime", "")
+    modified = file.get("modifiedTime", "")
+    # ISO strings comparam lexicograficamente quando começam com YYYY-MM-DD
+    return created >= CUTOFF_DATE or modified >= CUTOFF_DATE
+
 
 class DriveClient:
     def __init__(self):
@@ -71,18 +82,23 @@ class DriveClient:
         return folders
 
     def list_files_in_folder(self, folder_id: str) -> list[dict]:
-        """Lista todos arquivos (não-pastas) dentro de um folder."""
+        """Lista todos arquivos (não-pastas) dentro de um folder, filtrando por data."""
         files = []
         page_token = None
         mime_query = " or ".join([f"mimeType='{m}'" for m in DECK_MIMES])
 
+        # Query do Drive já filtra na fonte — economiza bandwidth e tempo
+        date_filter = (
+            f"(createdTime >= '{CUTOFF_DATE}' or modifiedTime >= '{CUTOFF_DATE}')"
+        )
+
         while True:
             def call():
                 return self.service.files().list(
-                    q=f"'{folder_id}' in parents and ({mime_query}) and trashed=false",
+                    q=f"'{folder_id}' in parents and ({mime_query}) and {date_filter} and trashed=false",
                     fields=(
                         "nextPageToken, files("
-                        "id, name, mimeType, size, modifiedTime, "
+                        "id, name, mimeType, size, createdTime, modifiedTime, "
                         "webViewLink, thumbnailLink, iconLink, "
                         "owners(emailAddress, displayName)"
                         ")"
@@ -98,7 +114,8 @@ class DriveClient:
             if not page_token:
                 break
 
-        return files
+        # Guarda extra de segurança caso a query do Drive não filtre corretamente
+        return [f for f in files if _is_recent(f)]
 
     def iter_all_decks(self, root_folder_id: str) -> Iterator[tuple[str, dict]]:
         """
