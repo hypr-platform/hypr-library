@@ -365,10 +365,21 @@ class BigQueryClient:
             m.deck_id, m.client, m.title,
             m.drive_url, m.thumbnail_url,
             m.owner_name, m.size_bytes, m.modified_time, m.mime_type,
-            -- Match no título (case-insensitive)
+            -- Match no título (frase exata)
             CAST(LOWER(m.title) LIKE CONCAT('%', @query_text, '%') AS INT64) AS title_match,
-            -- Match no conteúdo
+            -- Match no conteúdo (frase exata)
             CAST(COALESCE(LOWER(c.full_text), '') LIKE CONCAT('%', @query_text, '%') AS INT64) AS content_match,
+            -- Match parcial: pelo menos 1 palavra do query aparece no título (útil pra queries longas)
+            CASE
+              WHEN ARRAY_LENGTH(SPLIT(@query_text, ' ')) > 1 THEN
+                (
+                  SELECT COUNT(1)
+                  FROM UNNEST(SPLIT(@query_text, ' ')) AS word
+                  WHERE LENGTH(word) >= 3
+                    AND LOWER(m.title) LIKE CONCAT('%', word, '%')
+                )
+              ELSE 0
+            END AS title_partial_match,
             -- Score semântico (1 - cosine, NULL se sem embedding)
             CASE
               WHEN e.embedding IS NOT NULL THEN 1 - ML.DISTANCE(e.embedding, @query_emb, 'COSINE')
@@ -386,15 +397,20 @@ class BigQueryClient:
         scored AS (
           SELECT
             *,
-            -- Score combinado: texto pesa 10x (título) + 3x (conteúdo) + 1x (semântica)
-            (title_match * 10) + (content_match * 3) + COALESCE(semantic_score, 0) AS final_score,
-            -- Tier de match:
-            --   2 = match textual em qualquer lugar (título ou conteúdo) — sempre vem antes
-            --   1 = match semântico forte (>= 0.72) — só pega resultados muito próximos
+            -- Score combinado
+            (title_match * 10)
+              + (content_match * 3)
+              + (title_partial_match * 1.5)
+              + COALESCE(semantic_score, 0) AS final_score,
+            -- Tier de match (mais permissivo que v7, mais rigoroso que v6):
+            --   3 = match exato no título OU no conteúdo (top tier)
+            --   2 = match parcial em palavras do título OU semântico muito forte (>= 0.68)
+            --   1 = match semântico médio (0.60 a 0.68)
             --   0 = irrelevante (descartado)
             CASE
-              WHEN title_match > 0 OR content_match > 0 THEN 2
-              WHEN semantic_score >= 0.72 THEN 1
+              WHEN title_match > 0 OR content_match > 0 THEN 3
+              WHEN title_partial_match > 0 OR semantic_score >= 0.68 THEN 2
+              WHEN semantic_score >= 0.60 THEN 1
               ELSE 0
             END AS match_tier
           FROM ranked
@@ -406,11 +422,11 @@ class BigQueryClient:
           distance,
           final_score AS score
         FROM scored
-        WHERE match_tier > 0  -- exclui resultados sem relevância
+        WHERE match_tier > 0
         ORDER BY
-          match_tier DESC,            -- match textual sempre vem antes do puramente semântico
-          modified_time DESC NULLS LAST,  -- dentro de cada tier, ordem cronológica estrita (mais novo primeiro)
-          final_score DESC             -- desempate quando data é igual
+          match_tier DESC,            -- match textual antes do semântico fraco
+          modified_time DESC NULLS LAST,  -- dentro de cada tier, ordem cronológica estrita
+          final_score DESC             -- desempate por relevância
         LIMIT @limit
         """
         job_config = bigquery.QueryJobConfig(query_parameters=params)
