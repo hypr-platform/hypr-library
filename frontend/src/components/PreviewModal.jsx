@@ -28,7 +28,7 @@ export function PreviewModal({ deck, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink-900/70 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in"
+      className="fixed inset-0 z-50 bg-ink-900/70 backdrop-blur-sm flex items-center justify-center p-3 lg:p-6 animate-fade-in"
       onClick={onClose}
     >
       <div
@@ -36,13 +36,13 @@ export function PreviewModal({ deck, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-ink-100 dark:border-ink-700 flex items-start justify-between gap-4">
+        <div className="px-4 lg:px-6 py-4 border-b border-ink-100 dark:border-ink-700 flex items-start justify-between gap-3 lg:gap-4">
           <div className="flex-1 min-w-0">
             <div className="text-[10px] text-hypr-cyan font-medium tracking-[0.18em] mb-1.5 flex items-center gap-1.5">
               <div className="w-0.5 h-3 bg-hypr-cyan"></div>
               {deck.client?.toUpperCase()}
             </div>
-            <h2 className="text-[16px] font-medium text-ink-900 dark:text-ink-50 leading-snug">
+            <h2 className="text-[15px] lg:text-[16px] font-medium text-ink-900 dark:text-ink-50 leading-snug">
               {deck.title}
             </h2>
           </div>
@@ -57,7 +57,7 @@ export function PreviewModal({ deck, onClose }) {
 
         {/* Preview */}
         <div className="flex-1 overflow-y-auto scroll-thin">
-          <div className="mx-6 mt-6 rounded-lg overflow-hidden border border-ink-100 dark:border-ink-700">
+          <div className="mx-4 lg:mx-6 mt-4 lg:mt-6 rounded-lg overflow-hidden border border-ink-100 dark:border-ink-700">
             {slidesEmbedUrl && !iframeError ? (
               <iframe
                 src={slidesEmbedUrl}
@@ -88,7 +88,7 @@ export function PreviewModal({ deck, onClose }) {
           </div>
 
           {/* Metadata */}
-          <div className="px-6 py-5 grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="px-4 lg:px-6 py-5 grid grid-cols-2 gap-x-6 gap-y-4">
             <MetaField
               icon={<Icon.Clock />}
               label="MODIFICADO"
@@ -114,18 +114,18 @@ export function PreviewModal({ deck, onClose }) {
         </div>
 
         {/* Actions */}
-        <div className="px-6 py-4 border-t border-ink-100 dark:border-ink-700 flex items-center gap-2">
+        <div className="px-4 lg:px-6 py-4 border-t border-ink-100 dark:border-ink-700 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <a
             href={deck.drive_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 h-9 rounded-md bg-hypr-cyan hover:bg-hypr-cyan-dark text-white text-[13px] font-medium flex items-center gap-1.5 transition-colors tracking-wide"
+            className="px-4 h-10 sm:h-9 rounded-md bg-hypr-cyan hover:bg-hypr-cyan-dark text-white text-[13px] font-medium flex items-center justify-center gap-1.5 transition-colors tracking-wide"
           >
             <Icon.ExternalLink /> Abrir no Drive
           </a>
           <button
             onClick={copyLink}
-            className="px-4 h-9 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-700/40 text-ink-700 dark:text-ink-100 text-[13px] font-medium flex items-center gap-1.5 transition-colors"
+            className="px-4 h-10 sm:h-9 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-700/40 text-ink-700 dark:text-ink-100 text-[13px] font-medium flex items-center justify-center gap-1.5 transition-colors"
           >
             <Icon.Copy /> {copied ? 'Copiado!' : 'Copiar link'}
           </button>

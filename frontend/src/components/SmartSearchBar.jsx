@@ -33,8 +33,8 @@ export function SmartSearchBar({
           type="text"
           value={query}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Descreva o que você procura: 'corredores premium', 'gamers gen z', 'alta renda automobilismo'…"
-          className="w-full h-12 pl-12 pr-48 text-[14px] font-normal rounded-lg bg-ink-100/50 dark:bg-ink-800/40 border border-ink-200 dark:border-ink-700 text-ink-900 dark:text-ink-50 placeholder:text-ink-400 dark:placeholder:text-ink-500 focus:outline-none focus:border-hypr-cyan focus:ring-4 focus:ring-hypr-cyan/10 focus:bg-white dark:focus:bg-ink-800 transition-all"
+          placeholder="Descreva o que você procura: 'corredores premium', 'gamers gen z'…"
+          className="w-full h-12 pl-12 pr-24 lg:pr-48 text-[14px] font-normal rounded-lg bg-ink-100/50 dark:bg-ink-800/40 border border-ink-200 dark:border-ink-700 text-ink-900 dark:text-ink-50 placeholder:text-ink-400 dark:placeholder:text-ink-500 focus:outline-none focus:border-hypr-cyan focus:ring-4 focus:ring-hypr-cyan/10 focus:bg-white dark:focus:bg-ink-800 transition-all"
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {query && (
@@ -49,7 +49,7 @@ export function SmartSearchBar({
           <button
             onClick={() => onScopeChange(scope === 'all' ? 'client' : 'all')}
             disabled={!activeClient}
-            className={`h-8 px-3 rounded-md text-[11px] font-medium flex items-center gap-1.5 transition-colors tracking-wide ${
+            className={`h-8 px-2.5 lg:px-3 rounded-md text-[11px] font-medium flex items-center gap-1.5 transition-colors tracking-wide max-w-[140px] ${
               scope === 'client' && activeClient
                 ? 'bg-hypr-cyan text-white'
                 : 'bg-white dark:bg-ink-700/60 text-ink-600 dark:text-ink-300 border border-ink-200 dark:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-700'
@@ -61,9 +61,11 @@ export function SmartSearchBar({
             }
           >
             <Icon.Filter />
-            {scope === 'client' && activeClient
-              ? activeClient
-              : 'Toda biblioteca'}
+            <span className="truncate hidden sm:inline">
+              {scope === 'client' && activeClient
+                ? activeClient
+                : 'Toda biblioteca'}
+            </span>
           </button>
         </div>
       </div>

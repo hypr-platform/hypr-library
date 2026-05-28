@@ -33,6 +33,7 @@ export default function App() {
   const [searchScope, setSearchScope] = useState('all');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedDeck, setSelectedDeck] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Estado da Home (dashboard quando nenhum cliente selecionado)
   const [stats, setStats] = useState(null);
@@ -186,44 +187,56 @@ export default function App() {
         onToggleDark={toggleDark}
         user={user}
         onLogout={logout}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="flex-1 overflow-y-auto scroll-thin bg-white dark:bg-ink-900">
+      <main className="flex-1 overflow-y-auto scroll-thin bg-white dark:bg-ink-900 w-full">
         {/* Top breadcrumb */}
-        <div className="border-b border-ink-200/60 dark:border-ink-700/30 px-10 py-3.5 flex items-center justify-between bg-white dark:bg-ink-900">
-          <div className="flex items-center gap-2 text-[11px] text-ink-400 dark:text-ink-500 tracking-wider">
+        <div className="border-b border-ink-200/60 dark:border-ink-700/30 px-4 lg:px-10 py-3.5 flex items-center justify-between bg-white dark:bg-ink-900 sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            {/* Hamburger - só mobile */}
             <button
-              onClick={() => {
-                setActiveClient(null);
-                setSearchQuery('');
-              }}
-              className="hover:text-ink-700 dark:hover:text-ink-200 transition-colors"
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden w-9 h-9 -ml-1 rounded-md hover:bg-ink-100 dark:hover:bg-ink-800 flex items-center justify-center text-ink-600 dark:text-ink-300"
+              aria-label="Abrir menu"
             >
-              BIBLIOTECA
+              <Icon.Menu />
             </button>
-            <span className="text-ink-300 dark:text-ink-700">/</span>
-            <span className="text-ink-700 dark:text-ink-200 font-medium">
-              AUDIENCE DISCOVERY
-            </span>
+            <div className="flex items-center gap-2 text-[11px] text-ink-400 dark:text-ink-500 tracking-wider">
+              <button
+                onClick={() => {
+                  setActiveClient(null);
+                  setSearchQuery('');
+                }}
+                className="hover:text-ink-700 dark:hover:text-ink-200 transition-colors"
+              >
+                BIBLIOTECA
+              </button>
+              <span className="text-ink-300 dark:text-ink-700">/</span>
+              <span className="text-ink-700 dark:text-ink-200 font-medium hidden sm:inline">
+                AUDIENCE DISCOVERY
+              </span>
+            </div>
           </div>
           <HyprLogo size="sm" />
         </div>
 
-        <div className="max-w-6xl mx-auto px-10 py-8">
+        <div className="max-w-6xl mx-auto px-4 lg:px-10 py-6 lg:py-8">
           {/* Section title HYPR style */}
-          <div className="flex items-baseline justify-between mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-0.5 h-5 bg-hypr-cyan"></div>
-                <div className="text-[10px] tracking-[0.22em] font-medium text-ink-500 dark:text-ink-400">
+          <div className="flex items-baseline justify-between mb-6 lg:mb-8 gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 mb-2 lg:mb-3">
+                <div className="w-0.5 h-5 bg-hypr-cyan shrink-0"></div>
+                <div className="text-[10px] tracking-[0.22em] font-medium text-ink-500 dark:text-ink-400 truncate">
                   {sectionLabel}
                 </div>
               </div>
-              <h1 className="text-[28px] font-light text-ink-900 dark:text-ink-50 tracking-tight leading-none">
+              <h1 className="text-[22px] lg:text-[28px] font-light text-ink-900 dark:text-ink-50 tracking-tight leading-none truncate">
                 {sectionTitle}
               </h1>
             </div>
-            <div className="text-[11px] text-ink-500 dark:text-ink-400 px-3 py-1.5 rounded-md bg-ink-100/60 dark:bg-ink-800/40 font-medium tracking-wide border border-ink-200/40 dark:border-ink-700/30">
+            <div className="text-[11px] text-ink-500 dark:text-ink-400 px-3 py-1.5 rounded-md bg-ink-100/60 dark:bg-ink-800/40 font-medium tracking-wide border border-ink-200/40 dark:border-ink-700/30 shrink-0 whitespace-nowrap">
               {deckBadgeCount} {deckBadgeLabel}
             </div>
           </div>

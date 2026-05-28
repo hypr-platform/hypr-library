@@ -11,6 +11,8 @@ export function Sidebar({
   onToggleDark,
   user,
   onLogout,
+  isOpen = false,
+  onClose,
 }) {
   const [query, setQuery] = useState('');
 
@@ -31,12 +33,41 @@ export function Sidebar({
         .toUpperCase()
     : 'HY';
 
+  // Wrapper de seleção que também fecha o drawer no mobile
+  const handleSelect = (name) => {
+    onSelect(name);
+    onClose?.();
+  };
+  const handleHome = () => {
+    onHome();
+    onClose?.();
+  };
+
   return (
-    <aside className="w-64 shrink-0 border-r border-ink-200 dark:border-ink-700/40 bg-ink-50 dark:bg-ink-900 flex flex-col h-screen">
+    <>
+      {/* Overlay escuro no mobile quando drawer aberto */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden animate-fade-in"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`
+          fixed lg:static inset-y-0 left-0 z-40
+          w-72 lg:w-64 shrink-0
+          border-r border-ink-200 dark:border-ink-700/40
+          bg-ink-50 dark:bg-ink-900 flex flex-col h-screen
+          transition-transform duration-300 ease-out
+          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
+      >
       {/* Brand + Theme toggle */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-ink-200/60 dark:border-ink-700/30">
         <button
-          onClick={onHome}
+          onClick={handleHome}
           className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
           aria-label="Voltar para Início"
         >
@@ -52,13 +83,23 @@ export function Sidebar({
             </span>
           </div>
         </button>
-        <button
-          onClick={onToggleDark}
-          className="w-8 h-8 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-white dark:hover:bg-ink-800 transition-colors flex items-center justify-center text-ink-500 dark:text-ink-400"
-          aria-label="Alternar tema"
-        >
-          {dark ? <Icon.Sun /> : <Icon.Moon />}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onToggleDark}
+            className="w-8 h-8 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-white dark:hover:bg-ink-800 transition-colors flex items-center justify-center text-ink-500 dark:text-ink-400"
+            aria-label="Alternar tema"
+          >
+            {dark ? <Icon.Sun /> : <Icon.Moon />}
+          </button>
+          {/* Botão fechar - só no mobile */}
+          <button
+            onClick={onClose}
+            className="lg:hidden w-8 h-8 rounded-md border border-ink-200 dark:border-ink-700 hover:bg-white dark:hover:bg-ink-800 transition-colors flex items-center justify-center text-ink-500 dark:text-ink-400"
+            aria-label="Fechar menu"
+          >
+            <Icon.X />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -88,8 +129,8 @@ export function Sidebar({
       {/* Home button */}
       <div className="px-2">
         <button
-          onClick={onHome}
-          className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-all flex items-center gap-2 group ${
+          onClick={handleHome}
+          className={`w-full text-left px-3 py-2 lg:py-1.5 rounded-md text-[14px] lg:text-[13px] transition-all flex items-center gap-2 group ${
             activeClient === null
               ? 'bg-hypr-cyan/10 dark:bg-hypr-cyan/15 text-hypr-cyan font-medium border-l-2 border-hypr-cyan -ml-[2px] pl-[14px]'
               : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-800/40 hover:text-ink-900 dark:hover:text-ink-50 font-normal border-l-2 border-transparent -ml-[2px] pl-[14px]'
@@ -121,8 +162,8 @@ export function Sidebar({
         {filtered.map((c) => (
           <button
             key={c.name}
-            onClick={() => onSelect(c.name)}
-            className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-all flex items-center justify-between gap-2 group ${
+            onClick={() => handleSelect(c.name)}
+            className={`w-full text-left px-3 py-2 lg:py-1.5 rounded-md text-[14px] lg:text-[13px] transition-all flex items-center justify-between gap-2 group ${
               activeClient === c.name
                 ? 'bg-hypr-cyan/10 dark:bg-hypr-cyan/15 text-hypr-cyan font-medium border-l-2 border-hypr-cyan -ml-[2px] pl-[14px]'
                 : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-800/40 hover:text-ink-900 dark:hover:text-ink-50 font-normal border-l-2 border-transparent -ml-[2px] pl-[14px]'
@@ -175,6 +216,7 @@ export function Sidebar({
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
