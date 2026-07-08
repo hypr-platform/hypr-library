@@ -29,6 +29,25 @@ if [ -z "$OAUTH_CLIENT_ID" ]; then
   echo "✓ Usando OAuth Client ID padrão: $OAUTH_CLIENT_ID"
 fi
 
+# NAVI_API_KEY — secret do Navi (chatbot interno, n8n), header X-Navi-Key.
+# COMPARTILHADO com o report hub: mesmo secret NAVI_API_KEY no Secret Manager
+# (o deploy.sh do hypr-report-center cria/gerencia). Lê de lá; só gera um novo
+# se o secret ainda não existir em lugar nenhum.
+if [ -z "$NAVI_API_KEY" ]; then
+  NAVI_API_KEY=$(gcloud secrets versions access latest --secret=NAVI_API_KEY --project="$PROJECT" 2>/dev/null || echo "")
+fi
+if [ -z "$NAVI_API_KEY" ]; then
+  echo "⚠️  NAVI_API_KEY não encontrado no Secret Manager. Gerando..."
+  NAVI_API_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+  gcloud secrets describe NAVI_API_KEY --project="$PROJECT" >/dev/null 2>&1 || \
+    gcloud secrets create NAVI_API_KEY --replication-policy=automatic --project="$PROJECT" >/dev/null
+  printf '%s' "$NAVI_API_KEY" | gcloud secrets versions add NAVI_API_KEY --data-file=- --project="$PROJECT" >/dev/null
+  echo "  ✨ NAVI_API_KEY gerado e armazenado no Secret Manager."
+  echo "     Configure este valor no header X-Navi-Key das tools HTTP do n8n."
+else
+  echo "✓ NAVI_API_KEY carregado do Secret Manager (compartilhado com o report hub)"
+fi
+
 # ===== DEPLOY =====
 echo "🚀 Deploying ${FUNCTION_NAME} to ${REGION}..."
 
@@ -44,7 +63,7 @@ gcloud functions deploy "$FUNCTION_NAME" \
   --memory=512Mi \
   --timeout=540s \
   --service-account="$SERVICE_ACCOUNT" \
-  --set-env-vars="GCP_PROJECT=${PROJECT},DRIVE_ROOT_FOLDER_ID=${DRIVE_ROOT_FOLDER_ID},BQ_DATASET=biblioteca,ALLOWED_HD=hypr.mobi,OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID},SYNC_SECRET=${SYNC_SECRET}"
+  --set-env-vars="GCP_PROJECT=${PROJECT},DRIVE_ROOT_FOLDER_ID=${DRIVE_ROOT_FOLDER_ID},BQ_DATASET=biblioteca,ALLOWED_HD=hypr.mobi,OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID},SYNC_SECRET=${SYNC_SECRET},NAVI_API_KEY=${NAVI_API_KEY}"
 
 # Pega o URL
 FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \

@@ -16,6 +16,7 @@ Deploy: ver docs/SETUP.md
 """
 import os
 import json
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -43,6 +44,7 @@ BQ_DATASET = os.environ.get("BQ_DATASET", "biblioteca")
 ALLOWED_HD = os.environ.get("ALLOWED_HD", "hypr.mobi")
 OAUTH_CLIENT_ID = os.environ["OAUTH_CLIENT_ID"]
 SYNC_SECRET = os.environ.get("SYNC_SECRET", "")  # Pra autenticar trigger de sync
+NAVI_API_KEY = os.environ.get("NAVI_API_KEY", "")  # Secret do Navi (chatbot interno) — só /search
 REGION = "southamerica-east1"
 
 # CORS
@@ -129,6 +131,19 @@ def verify_sync_secret(req):
         return False
     auth_header = req.headers.get("Authorization", "")
     return auth_header == f"Bearer {SYNC_SECRET}"
+
+
+def verify_navi_key(req):
+    """Autentica o Navi (chatbot interno, via n8n) pelo header X-Navi-Key.
+
+    O Navi não é um usuário logado — usa um secret de serviço, mesmo padrão
+    do SYNC_SECRET. O mesmo secret NAVI_API_KEY é compartilhado com o report
+    hub (Secret Manager, projeto site-hypr). Comparação timing-safe.
+    A chave dá acesso APENAS ao /search (ver gate no dispatch) — nunca a
+    endpoints de sync ou administração.
+    """
+    provided = req.headers.get("X-Navi-Key", "")
+    return bool(NAVI_API_KEY) and hmac.compare_digest(provided, NAVI_API_KEY)
 
 
 # ============================================================
@@ -259,7 +274,14 @@ def biblioteca_data(req):
     # ---- Endpoints autenticados (Google login @hypr.mobi) ----
     user = verify_user_token(req)
     if not user:
-        return json_response({"error": "unauthorized", "hint": "Login com conta @hypr.mobi"}, 401, origin)
+        # Navi (chatbot interno): acesso restrito ao /search via X-Navi-Key.
+        # Menor privilégio — a chave do bot NÃO abre /clients, /decks, /stats
+        # nem qualquer outro endpoint; qualquer outro path continua exigindo
+        # login Google @hypr.mobi.
+        if path == "/search" and req.method == "POST" and verify_navi_key(req):
+            user = {"email": "navi-bot@internal", "name": "Navi", "hd": ALLOWED_HD}
+        else:
+            return json_response({"error": "unauthorized", "hint": "Login com conta @hypr.mobi"}, 401, origin)
 
     # Clientes
     if path == "/clients" and req.method == "GET":
