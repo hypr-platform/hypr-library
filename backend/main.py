@@ -9,6 +9,7 @@ Endpoints:
   POST /search                  - Busca semântica { query: str, client?: str, limit?: int }
   GET  /tags?category=X         - Facetas de tags (solucao | feature | audiencia) com contagem
   GET  /tags/decks?tag=X        - Decks que têm a tag, com slides onde aparece
+  GET  /tags/analytics          - Tags por cliente (dados da aba Analytics)
   GET  /deck/{deck_id}/tags     - Tags por slide de 1 deck
   POST /sync                    - Trigger reindex (autenticado via SYNC_SECRET)
   POST /sync/tags               - Backfill de tags por slide (autenticado via SYNC_SECRET)
@@ -330,6 +331,10 @@ def biblioteca_data(req):
         category = req.args.get("category")
         tags = get_bq().list_tag_facets(category=category)
         return json_response({"tags": tags}, origin=origin)
+
+    # Analytics de tags por cliente
+    if path == "/tags/analytics" and req.method == "GET":
+        return json_response(get_bq().tag_analytics(), origin=origin)
 
     # Decks por tag
     if path == "/tags/decks" and req.method == "GET":

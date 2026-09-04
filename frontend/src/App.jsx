@@ -9,6 +9,7 @@ import { DeckCard } from './components/DeckCard.jsx';
 import { PreviewModal } from './components/PreviewModal.jsx';
 import { HyprLogo } from './components/HyprLogo.jsx';
 import { HomeDashboard } from './components/HomeDashboard.jsx';
+import { AnalyticsView } from './components/AnalyticsView.jsx';
 import { Icon } from './lib/icons.jsx';
 
 // Debounce para busca semântica (evita disparar request a cada tecla)
@@ -38,6 +39,7 @@ export default function App() {
   const [tagDecks, setTagDecks] = useState([]);
   const [loadingTag, setLoadingTag] = useState(false);
   const [tagFacets, setTagFacets] = useState([]);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -162,8 +164,10 @@ export default function App() {
   // MAIN APP
   // ============================================================
   const isSearchActive = debouncedQuery.trim().length > 0;
-  const isTagMode = !!activeTag && !isSearchActive;
-  const isHome = !activeClient && !isSearchActive && !isTagMode;
+  const isAnalytics = showAnalytics && !isSearchActive;
+  const isTagMode = !!activeTag && !isSearchActive && !isAnalytics;
+  const isHome = !activeClient && !isSearchActive && !isTagMode && !isAnalytics;
+  const activeView = isAnalytics ? 'analytics' : isTagMode ? 'tag' : activeClient ? 'client' : 'home';
   const displayedDecks = isSearchActive ? searchResults : isTagMode ? tagDecks : decks;
   const showClientBadge = (isSearchActive && searchScope === 'all') || isTagMode;
 
@@ -183,6 +187,13 @@ export default function App() {
         Busca <span className="text-hypr-cyan font-light">semântica</span>
       </>
     );
+  } else if (isAnalytics) {
+    sectionLabel = 'ANALYTICS';
+    sectionTitle = (
+      <>
+        Tags <span className="text-hypr-cyan font-light">por cliente</span>
+      </>
+    );
   } else if (isTagMode) {
     sectionLabel = activeTag.category === 'audiencia' ? 'AUDIÊNCIA' : 'SOLUÇÃO / FEATURE';
     sectionTitle = <span className="font-light">{activeTag.tag}</span>;
@@ -198,7 +209,7 @@ export default function App() {
   let deckBadgeCount;
   if (isSearchActive || isTagMode) {
     deckBadgeCount = displayedDecks.length;
-  } else if (isHome) {
+  } else if (isHome || isAnalytics) {
     deckBadgeCount = stats?.total_decks ?? '—';
   } else {
     deckBadgeCount = displayedDecks.length;
@@ -210,14 +221,23 @@ export default function App() {
       <Sidebar
         clients={clients}
         activeClient={activeClient}
+        activeView={activeView}
         onSelect={(c) => {
           setActiveClient(c);
           setActiveTag(null);
+          setShowAnalytics(false);
           setSearchQuery('');
         }}
         onHome={() => {
           setActiveClient(null);
           setActiveTag(null);
+          setShowAnalytics(false);
+          setSearchQuery('');
+        }}
+        onAnalytics={() => {
+          setActiveClient(null);
+          setActiveTag(null);
+          setShowAnalytics(true);
           setSearchQuery('');
         }}
         dark={dark}
@@ -245,12 +265,19 @@ export default function App() {
                 onClick={() => {
                   setActiveClient(null);
                   setActiveTag(null);
+                  setShowAnalytics(false);
                   setSearchQuery('');
                 }}
                 className="hover:text-ink-700 dark:hover:text-ink-200 transition-colors"
               >
                 BIBLIOTECA
               </button>
+              {isAnalytics && (
+                <>
+                  <span className="text-ink-300 dark:text-ink-700">/</span>
+                  <span className="text-ink-700 dark:text-ink-200 font-medium hidden sm:inline">ANALYTICS</span>
+                </>
+              )}
               {isTagMode && (
                 <>
                   <span className="text-ink-300 dark:text-ink-700">/</span>
@@ -321,6 +348,20 @@ export default function App() {
                 />
               ))}
             </div>
+          ) : isAnalytics ? (
+            // Modo ANALYTICS
+            <AnalyticsView
+              onTagSelect={(t) => {
+                setShowAnalytics(false);
+                setActiveClient(null);
+                setActiveTag(t);
+              }}
+              onClientSelect={(c) => {
+                setShowAnalytics(false);
+                setActiveTag(null);
+                setActiveClient(c);
+              }}
+            />
           ) : isTagMode ? (
             // Modo TAG (decks que têm a tag, com o slide onde aparece)
             loadingTag ? (

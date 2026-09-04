@@ -74,6 +74,7 @@ export const api = {
   deckTags: (deckId) => request(`/deck/${deckId}/tags`),
   tags: (category = null) =>
     request(`/tags${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+  tagAnalytics: () => request('/tags/analytics'),
   decksByTag: (tag, clientFilter = null, limit = 50) =>
     request(
       `/tags/decks?tag=${encodeURIComponent(tag)}` +

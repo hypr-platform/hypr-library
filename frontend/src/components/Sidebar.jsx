@@ -7,6 +7,8 @@ export function Sidebar({
   activeClient,
   onSelect,
   onHome,
+  onAnalytics,
+  activeView = 'home', // 'home' | 'client' | 'analytics' | 'tag'
   dark,
   onToggleDark,
   user,
@@ -42,6 +44,16 @@ export function Sidebar({
     onHome();
     onClose?.();
   };
+  const handleAnalytics = () => {
+    onAnalytics?.();
+    onClose?.();
+  };
+  const navCls = (active) =>
+    `w-full text-left px-3 py-2 lg:py-1.5 rounded-md text-[14px] lg:text-[13px] transition-all flex items-center gap-2 group ${
+      active
+        ? 'bg-hypr-cyan/10 dark:bg-hypr-cyan/15 text-hypr-cyan font-medium border-l-2 border-hypr-cyan -ml-[2px] pl-[14px]'
+        : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-800/40 hover:text-ink-900 dark:hover:text-ink-50 font-normal border-l-2 border-transparent -ml-[2px] pl-[14px]'
+    }`;
 
   return (
     <>
@@ -126,18 +138,15 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Home button */}
-      <div className="px-2">
-        <button
-          onClick={handleHome}
-          className={`w-full text-left px-3 py-2 lg:py-1.5 rounded-md text-[14px] lg:text-[13px] transition-all flex items-center gap-2 group ${
-            activeClient === null
-              ? 'bg-hypr-cyan/10 dark:bg-hypr-cyan/15 text-hypr-cyan font-medium border-l-2 border-hypr-cyan -ml-[2px] pl-[14px]'
-              : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-800/40 hover:text-ink-900 dark:hover:text-ink-50 font-normal border-l-2 border-transparent -ml-[2px] pl-[14px]'
-          }`}
-        >
+      {/* Home + Analytics */}
+      <div className="px-2 flex flex-col gap-0.5">
+        <button onClick={handleHome} className={navCls(activeView === 'home' || activeView === 'tag')}>
           <Icon.Sparkles />
           <span>Início</span>
+        </button>
+        <button onClick={handleAnalytics} className={navCls(activeView === 'analytics')}>
+          <Icon.Chart />
+          <span>Analytics</span>
         </button>
       </div>
 

@@ -312,6 +312,40 @@ class BigQueryClient:
             out.append(d)
         return out
 
+    def tag_analytics(self) -> dict:
+        """
+        Dados pra aba Analytics:
+          - by_client_tag: [{client, category, tag, decks}]  (todas as combinações)
+          - clients:       [{client, decks_total, decks_tagged}]
+        O front agrega (top N, matriz cliente × tag). Poucos milhares de linhas.
+        """
+        q1 = f"""
+        SELECT t.client, t.category, t.tag, COUNT(DISTINCT t.deck_id) AS decks
+        FROM `{self.tbl_tags}` t
+        WHERE t.category != '_notags' AND t.client IS NOT NULL
+        GROUP BY 1, 2, 3
+        ORDER BY decks DESC
+        """
+        q2 = f"""
+        SELECT
+          m.client,
+          COUNT(DISTINCT m.deck_id) AS decks_total,
+          COUNT(DISTINCT IF(t.category != '_notags', t.deck_id, NULL)) AS decks_tagged
+        FROM `{self.tbl_meta}` m
+        LEFT JOIN `{self.tbl_tags}` t ON t.deck_id = m.deck_id
+        GROUP BY 1
+        ORDER BY decks_tagged DESC, decks_total DESC
+        """
+        by_client_tag = [
+            {"client": r["client"], "category": r["category"], "tag": r["tag"], "decks": int(r["decks"])}
+            for r in self.client.query(q1).result()
+        ]
+        clients = [
+            {"client": r["client"], "decks_total": int(r["decks_total"]), "decks_tagged": int(r["decks_tagged"])}
+            for r in self.client.query(q2).result()
+        ]
+        return {"by_client_tag": by_client_tag, "clients": clients}
+
     def get_deck_tags(self, deck_id: str) -> list[dict]:
         """Tags de 1 deck, ordenadas por slide — pra chips no preview."""
         query = f"""
