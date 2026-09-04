@@ -25,6 +25,7 @@ Estratégia de resumo:
 - Cloud Scheduler chama /sync/embeddings a cada 2 min até completar.
 """
 import logging
+import re
 from datetime import datetime, timezone
 
 from tagging import tag_deck
@@ -56,6 +57,16 @@ def _extract_size_bytes(size_str):
         return 0
 
 
+# Títulos ignorados na indexação: cópias geradas pelo Drive ("Cópia de ...",
+# "Copy of ..."). Como upsert_metadata apaga o que não vem no staging,
+# decks já indexados com esses nomes somem de todas as tabelas no próximo sync.
+_IGNORED_TITLE_RE = re.compile(r"^\s*(c[óo]pia\s+de|copy\s+of)\b", re.IGNORECASE)
+
+
+def is_ignored_title(title: str) -> bool:
+    return bool(_IGNORED_TITLE_RE.match(title or ""))
+
+
 # ============================================================
 # FASE 1: METADATA
 # ============================================================
@@ -69,8 +80,12 @@ def sync_metadata(drive, bq, root_folder_id: str) -> dict:
 
     metadata_rows = []
     clients_seen = set()
+    ignored = 0
 
     for client_name, file in drive.iter_all_decks(root_folder_id):
+        if is_ignored_title(file.get("name", "")):
+            ignored += 1
+            continue
         clients_seen.add(client_name)
         owner = (file.get("owners") or [{}])[0]
 
@@ -90,7 +105,7 @@ def sync_metadata(drive, bq, root_folder_id: str) -> dict:
             "synced_at": started.isoformat(),
         })
 
-    log.info(f"[Metadata] {len(clients_seen)} clientes, {len(metadata_rows)} decks. Salvando no BigQuery...")
+    log.info(f"[Metadata] {len(clients_seen)} clientes, {len(metadata_rows)} decks ({ignored} cópias ignoradas). Salvando no BigQuery...")
     bq.upsert_metadata(metadata_rows)
 
     ended = datetime.now(timezone.utc)
