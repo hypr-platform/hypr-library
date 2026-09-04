@@ -97,6 +97,7 @@ _NOT_AUDIENCE_NAMES = {
     "cnaes mapeados", "ooh amplification", "visitantes prontos para impacto",
     "familias com maior poder aquisitivo", "proximos a concorrentes",
     "devices estimados", "users", "usuarios unicos", "available audience",
+    "varejo alimentar e conveniencia", "atividade", "permanencia", "isocrona",
 }
 _MAX_NAME_WORDS = 5
 
@@ -130,6 +131,10 @@ def _looks_like_title(cand: str) -> bool:
     if not cand or len(cand) > 45 or cand.endswith((".", ":", "!", "?")):
         return False
     if cand.lstrip().startswith(("+", "•", "-", "▪")):
+        return False
+    # Tudo em caixa alta = eixo/família ("EMPREENDEDORES", "AMPLIFIER"), não nome
+    letters = re.sub(r"[^A-Za-zÀ-ÿ]", "", cand)
+    if letters and letters.isupper():
         return False
     if re.search(r"\d", cand) or len(cand.split()) > _MAX_NAME_WORDS:
         return False
@@ -175,6 +180,8 @@ Extraia o NOME de cada audiência exatamente como aparece como TÍTULO CURTO do 
 "Varejo de Bairro", "Premium Banking".
 Regras:
 - Não invente nem resuma: copie o título que está no slide.
+- O nome é a linha em Caixa Normal ("Varejo de Bairro", "Empreendedor conectado");
+  NUNCA devolva rótulos em CAIXA ALTA como "EMPREENDEDORES", "AMPLIFIER", "COMPORTAMENTO".
 - Ignore eixos genéricos (COMPORTAMENTO, AFINIDADE, LIFESTYLE), nomes de redes/lojas,
   linhas que começam com "+" (interesses) e descrições como "Potenciais compradores",
   "Place visits", "Visitantes prontos para impacto".
@@ -234,8 +241,9 @@ def extract_audiences(slide_text: str) -> tuple[list[dict], str]:
     """Devolve (audiências, source) onde source ∈ {'llm','rules'}."""
     if TAGGING_USE_LLM:
         res = _audiences_llm(slide_text)
-        if res is not None:
+        if res:
             return res, "llm"
+        # LLM respondeu vazio (ou só rótulos descartados) → tenta o layout
     return _audiences_heuristic(slide_text), "rules"
 
 
