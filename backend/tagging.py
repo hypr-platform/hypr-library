@@ -90,6 +90,16 @@ _VOLUME_RE = re.compile(r"^\+?\d[\d.,]*\s*[mk]\s*$", re.I)
 _AXIS_WORDS = {"comportamento", "afinidade", "lifestyle", "censitaria", "proximidade",
                "mobilidade", "o2o", "ooh", "marketing"}
 
+# Linhas descritivas que aparecem acima da volumetria em vários templates e
+# NÃO são nome de cluster. Comparação sobre texto normalizado.
+_NOT_AUDIENCE_NAMES = {
+    "potenciais compradores", "place visits", "store visits", "hypr location", "insight",
+    "cnaes mapeados", "ooh amplification", "visitantes prontos para impacto",
+    "familias com maior poder aquisitivo", "proximos a concorrentes",
+    "devices estimados", "users", "usuarios unicos", "available audience",
+}
+_MAX_NAME_WORDS = 5
+
 
 # ============================================================
 # HELPERS
@@ -115,10 +125,15 @@ def _is_audience(norm: str) -> bool:
 
 
 def _looks_like_title(cand: str) -> bool:
-    """Nome de audiência: curto, sem ponto final, sem dígitos, até 5 palavras."""
+    """Nome de audiência: curto, sem ponto final, sem dígitos, até 5 palavras,
+    não começa com '+' (linhas de interesse) e não está na lista de exclusão."""
     if not cand or len(cand) > 45 or cand.endswith((".", ":", "!", "?")):
         return False
-    if re.search(r"\d", cand) or len(cand.split()) > 5:
+    if cand.lstrip().startswith(("+", "•", "-", "▪")):
+        return False
+    if re.search(r"\d", cand) or len(cand.split()) > _MAX_NAME_WORDS:
+        return False
+    if _norm(cand) in _NOT_AUDIENCE_NAMES:
         return False
     return True
 
@@ -142,7 +157,7 @@ def _audiences_heuristic(slide_text: str) -> list[dict]:
     for i, line in enumerate(lines):
         if not _VOLUME_RE.match(line):
             continue
-        for j in range(i - 1, max(i - 6, -1), -1):
+        for j in range(i - 1, max(i - 9, -1), -1):
             cand = lines[j]
             if not _looks_like_title(cand):
                 continue
@@ -155,10 +170,16 @@ def _audiences_heuristic(slide_text: str) -> list[dict]:
 
 _LLM_PROMPT = """Você recebe o texto de UM slide de uma apresentação comercial da HYPR
 (mídia baseada em dados de localização). O slide descreve uma ou mais audiências (clusters).
-Extraia o NOME de cada audiência exatamente como aparece como título do cluster,
-ex.: "Luxo recorrente", "Fluxo rodoviário", "Decisores de Marketing", "Varejo de Bairro".
-Ignore eixos genéricos (COMPORTAMENTO, AFINIDADE, LIFESTYLE) e nomes de redes/lojas.
-Se não houver audiência nomeada, devolva [].
+Extraia o NOME de cada audiência exatamente como aparece como TÍTULO CURTO do cluster
+(1 a 5 palavras), ex.: "Luxo recorrente", "Fluxo rodoviário", "Decisores de Marketing",
+"Varejo de Bairro", "Premium Banking".
+Regras:
+- Não invente nem resuma: copie o título que está no slide.
+- Ignore eixos genéricos (COMPORTAMENTO, AFINIDADE, LIFESTYLE), nomes de redes/lojas,
+  linhas que começam com "+" (interesses) e descrições como "Potenciais compradores",
+  "Place visits", "Visitantes prontos para impacto".
+- Se o único candidato for uma frase (mais de 5 palavras), NÃO use a frase: devolva [].
+- Se não houver audiência nomeada, devolva [].
 
 Responda SOMENTE com JSON válido, sem markdown:
 [{"name": "...", "detail": "eixo, volumetria e principais redes em até 15 palavras"}]
@@ -195,7 +216,15 @@ def _audiences_llm(slide_text: str) -> Optional[list[dict]]:
             ),
         )
         data = json.loads(resp.text)
-        return [d for d in data if isinstance(d, dict) and d.get("name")]
+        out = []
+        for d in data:
+            if not (isinstance(d, dict) and d.get("name")):
+                continue
+            name = str(d["name"]).strip()
+            if not _looks_like_title(name):
+                continue
+            out.append({"name": name, "detail": d.get("detail", "")})
+        return out
     except Exception as e:  # noqa: BLE001
         log.warning(f"[Tagging] LLM falhou, usando heurística: {e}")
         return None
