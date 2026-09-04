@@ -4,7 +4,7 @@ import { gradientFor, formatBytes, formatDate } from '../lib/utils.js';
 import { HyprLogo } from './HyprLogo.jsx';
 import { api } from '../lib/api.js';
 
-export function PreviewModal({ deck, onClose }) {
+export function PreviewModal({ deck, onClose, initialSlide = null }) {
   const [copied, setCopied] = useState(false);
   const [iframeError, setIframeError] = useState(false);
   const [tags, setTags] = useState([]);
@@ -15,7 +15,7 @@ export function PreviewModal({ deck, onClose }) {
     if (!deck?.deck_id) return;
     let cancelled = false;
     setTags([]);
-    setActiveSlide(null);
+    setActiveSlide(initialSlide || null);
     api
       .deckTags(deck.deck_id)
       .then((r) => !cancelled && setTags(r?.tags || []))
@@ -23,7 +23,7 @@ export function PreviewModal({ deck, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [deck?.deck_id]);
+  }, [deck?.deck_id, initialSlide]);
 
   useEffect(() => {
     const onEsc = (e) => e.key === 'Escape' && onClose();

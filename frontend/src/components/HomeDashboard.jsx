@@ -1,8 +1,17 @@
 import { Icon } from '../lib/icons.jsx';
 import { DeckCard } from './DeckCard.jsx';
 import { formatDate } from '../lib/utils.js';
+import { TagExplorer } from './TagExplorer.jsx';
 
-export function HomeDashboard({ stats, recentDecks, onDeckClick, loading }) {
+export function HomeDashboard({
+  stats,
+  recentDecks,
+  onDeckClick,
+  loading,
+  tagFacets = [],
+  loadingTags = false,
+  onTagSelect,
+}) {
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -32,6 +41,9 @@ export function HomeDashboard({ stats, recentDecks, onDeckClick, loading }) {
           icon={<Icon.Clock />}
         />
       </div>
+
+      {/* Tag explorer */}
+      <TagExplorer facets={tagFacets} loading={loadingTags} onSelect={onTagSelect} />
 
       {/* Recent decks section */}
       <div className="mb-4">

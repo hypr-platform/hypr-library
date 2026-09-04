@@ -33,6 +33,12 @@ export default function App() {
   const [searchScope, setSearchScope] = useState('all');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedDeck, setSelectedDeck] = useState(null);
+  // Modo TAG: { tag, category } selecionada na Home (ou via chip)
+  const [activeTag, setActiveTag] = useState(null);
+  const [tagDecks, setTagDecks] = useState([]);
+  const [loadingTag, setLoadingTag] = useState(false);
+  const [tagFacets, setTagFacets] = useState([]);
+  const [loadingTags, setLoadingTags] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Estado da Home (dashboard quando nenhum cliente selecionado)
@@ -79,6 +85,31 @@ export default function App() {
       })
       .finally(() => setLoadingHome(false));
   }, [user, activeClient]);
+
+  // 2b) Facetas de tags (uma vez por sessão; falha silenciosa se tabela vazia)
+  useEffect(() => {
+    if (!user) return;
+    setLoadingTags(true);
+    api
+      .tags()
+      .then((data) => setTagFacets(data?.tags || []))
+      .catch(() => setTagFacets([]))
+      .finally(() => setLoadingTags(false));
+  }, [user]);
+
+  // 2c) Decks da tag ativa
+  useEffect(() => {
+    if (!user || !activeTag) return;
+    setLoadingTag(true);
+    api
+      .decksByTag(activeTag.tag, null, 100)
+      .then((data) => setTagDecks(data?.decks || []))
+      .catch((e) => {
+        console.error('Falha ao carregar decks da tag:', e);
+        setApiError(e.message);
+      })
+      .finally(() => setLoadingTag(false));
+  }, [user, activeTag]);
 
   // 3) Carrega decks do cliente ativo
   useEffect(() => {
@@ -131,9 +162,10 @@ export default function App() {
   // MAIN APP
   // ============================================================
   const isSearchActive = debouncedQuery.trim().length > 0;
-  const isHome = !activeClient && !isSearchActive;
-  const displayedDecks = isSearchActive ? searchResults : decks;
-  const showClientBadge = isSearchActive && searchScope === 'all';
+  const isTagMode = !!activeTag && !isSearchActive;
+  const isHome = !activeClient && !isSearchActive && !isTagMode;
+  const displayedDecks = isSearchActive ? searchResults : isTagMode ? tagDecks : decks;
+  const showClientBadge = (isSearchActive && searchScope === 'all') || isTagMode;
 
   // Título e label do header
   let sectionLabel, sectionTitle;
@@ -151,6 +183,9 @@ export default function App() {
         Busca <span className="text-hypr-cyan font-light">semântica</span>
       </>
     );
+  } else if (isTagMode) {
+    sectionLabel = activeTag.category === 'audiencia' ? 'AUDIÊNCIA' : 'SOLUÇÃO / FEATURE';
+    sectionTitle = <span className="font-light">{activeTag.tag}</span>;
   } else if (isHome) {
     sectionLabel = 'VISÃO GERAL';
     sectionTitle = <span className="font-light">Biblioteca HYPR</span>;
@@ -161,7 +196,7 @@ export default function App() {
 
   // Contador de decks no badge superior
   let deckBadgeCount;
-  if (isSearchActive) {
+  if (isSearchActive || isTagMode) {
     deckBadgeCount = displayedDecks.length;
   } else if (isHome) {
     deckBadgeCount = stats?.total_decks ?? '—';
@@ -177,10 +212,12 @@ export default function App() {
         activeClient={activeClient}
         onSelect={(c) => {
           setActiveClient(c);
+          setActiveTag(null);
           setSearchQuery('');
         }}
         onHome={() => {
           setActiveClient(null);
+          setActiveTag(null);
           setSearchQuery('');
         }}
         dark={dark}
@@ -207,12 +244,19 @@ export default function App() {
               <button
                 onClick={() => {
                   setActiveClient(null);
+                  setActiveTag(null);
                   setSearchQuery('');
                 }}
                 className="hover:text-ink-700 dark:hover:text-ink-200 transition-colors"
               >
                 BIBLIOTECA
               </button>
+              {isTagMode && (
+                <>
+                  <span className="text-ink-300 dark:text-ink-700">/</span>
+                  <span className="text-ink-700 dark:text-ink-200 font-medium hidden sm:inline">TAG</span>
+                </>
+              )}
               <span className="text-ink-300 dark:text-ink-700">/</span>
               <span className="text-ink-700 dark:text-ink-200 font-medium hidden sm:inline">
                 AUDIENCE DISCOVERY
@@ -277,6 +321,38 @@ export default function App() {
                 />
               ))}
             </div>
+          ) : isTagMode ? (
+            // Modo TAG (decks que têm a tag, com o slide onde aparece)
+            loadingTag ? (
+              <LoadingGrid />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="col-span-full -mt-2 mb-1 flex items-center gap-2 text-[11px] text-ink-500 dark:text-ink-400">
+                  <button
+                    onClick={() => setActiveTag(null)}
+                    className="px-2 h-6 rounded-md border border-ink-200 dark:border-ink-700 hover:border-hypr-cyan hover:text-hypr-cyan transition-colors"
+                  >
+                    ← Todas as tags
+                  </button>
+                  <span>Abrir um deck já cai no slide da tag.</span>
+                </div>
+                {displayedDecks.length === 0 && (
+                  <EmptyState
+                    icon={<Icon.SearchOff />}
+                    title="Nenhum deck com essa tag"
+                    subtitle="O tagging roda no sync diário — decks novos aparecem aqui no dia seguinte"
+                  />
+                )}
+                {displayedDecks.map((deck) => (
+                  <DeckCard
+                    key={deck.deck_id}
+                    deck={deck}
+                    showClientBadge={true}
+                    onClick={() => setSelectedDeck(deck)}
+                  />
+                ))}
+              </div>
+            )
           ) : isHome ? (
             // Modo HOME (dashboard de visão geral)
             <HomeDashboard
@@ -284,6 +360,13 @@ export default function App() {
               recentDecks={recentDecks}
               onDeckClick={setSelectedDeck}
               loading={loadingHome}
+              tagFacets={tagFacets}
+              loadingTags={loadingTags}
+              onTagSelect={(t) => {
+                setActiveClient(null);
+                setSearchQuery('');
+                setActiveTag(t);
+              }}
             />
           ) : (
             // Modo CLIENTE selecionado
@@ -329,7 +412,11 @@ export default function App() {
       </main>
 
       {selectedDeck && (
-        <PreviewModal deck={selectedDeck} onClose={() => setSelectedDeck(null)} />
+        <PreviewModal
+          deck={selectedDeck}
+          initialSlide={selectedDeck.slides?.[0]?.slide_object_id || null}
+          onClose={() => setSelectedDeck(null)}
+        />
       )}
     </div>
   );
