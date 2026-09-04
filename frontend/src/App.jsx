@@ -10,6 +10,7 @@ import { PreviewModal } from './components/PreviewModal.jsx';
 import { HyprLogo } from './components/HyprLogo.jsx';
 import { HomeDashboard } from './components/HomeDashboard.jsx';
 import { AnalyticsView } from './components/AnalyticsView.jsx';
+import { ClientTagStrip } from './components/ClientTagStrip.jsx';
 import { Icon } from './lib/icons.jsx';
 
 // Debounce para busca semântica (evita disparar request a cada tecla)
@@ -40,6 +41,12 @@ export default function App() {
   const [loadingTag, setLoadingTag] = useState(false);
   const [tagFacets, setTagFacets] = useState([]);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  // Tags do cliente ativo + filtro por tag dentro do cliente
+  const [clientFacets, setClientFacets] = useState([]);
+  const [loadingClientFacets, setLoadingClientFacets] = useState(false);
+  const [clientTag, setClientTag] = useState(null); // {tag, category} | null
+  const [clientTagDecks, setClientTagDecks] = useState([]);
+  const [loadingClientTag, setLoadingClientTag] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -113,6 +120,33 @@ export default function App() {
       .finally(() => setLoadingTag(false));
   }, [user, activeTag]);
 
+  // 3a) Tags mais usadas do cliente ativo
+  useEffect(() => {
+    if (!user || !activeClient) return;
+    setClientTag(null);
+    setClientFacets([]);
+    setLoadingClientFacets(true);
+    api
+      .tags(null, activeClient)
+      .then((data) => setClientFacets(data?.tags || []))
+      .catch(() => setClientFacets([]))
+      .finally(() => setLoadingClientFacets(false));
+  }, [user, activeClient]);
+
+  // 3b) Decks do cliente filtrados por tag
+  useEffect(() => {
+    if (!user || !activeClient || !clientTag) {
+      setClientTagDecks([]);
+      return;
+    }
+    setLoadingClientTag(true);
+    api
+      .decksByTag(clientTag.tag, activeClient, 100)
+      .then((data) => setClientTagDecks(data?.decks || []))
+      .catch((e) => setApiError(e.message))
+      .finally(() => setLoadingClientTag(false));
+  }, [user, activeClient, clientTag]);
+
   // 3) Carrega decks do cliente ativo
   useEffect(() => {
     if (!user || !activeClient) return;
@@ -168,7 +202,14 @@ export default function App() {
   const isTagMode = !!activeTag && !isSearchActive && !isAnalytics;
   const isHome = !activeClient && !isSearchActive && !isTagMode && !isAnalytics;
   const activeView = isAnalytics ? 'analytics' : isTagMode ? 'tag' : activeClient ? 'client' : 'home';
-  const displayedDecks = isSearchActive ? searchResults : isTagMode ? tagDecks : decks;
+  const clientFiltered = !!activeClient && !!clientTag && !isSearchActive;
+  const displayedDecks = isSearchActive
+    ? searchResults
+    : isTagMode
+      ? tagDecks
+      : clientFiltered
+        ? clientTagDecks
+        : decks;
   const showClientBadge = (isSearchActive && searchScope === 'all') || isTagMode;
 
   // Título e label do header
@@ -200,6 +241,9 @@ export default function App() {
   } else if (isHome) {
     sectionLabel = 'VISÃO GERAL';
     sectionTitle = <span className="font-light">Biblioteca HYPR</span>;
+  } else if (clientFiltered) {
+    sectionLabel = `${activeClient.toUpperCase()} · ${clientTag.category === 'audiencia' ? 'AUDIÊNCIA' : 'SOLUÇÃO / FEATURE'}`;
+    sectionTitle = <span className="font-light">{clientTag.tag}</span>;
   } else {
     sectionLabel = 'CLIENTE SELECIONADO';
     sectionTitle = <span className="font-light">{activeClient}</span>;
@@ -411,27 +455,40 @@ export default function App() {
             />
           ) : (
             // Modo CLIENTE selecionado
-            loadingDecks || loadingClients ? (
-              <LoadingGrid />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {displayedDecks.length === 0 && (
-                  <EmptyState
-                    icon={<Icon.Presentation />}
-                    title="Sem decks para este cliente"
-                    subtitle="A pasta deste cliente ainda não tem audience discoveries de 2025+ indexadas"
-                  />
-                )}
-                {displayedDecks.map((deck) => (
-                  <DeckCard
-                    key={deck.deck_id}
-                    deck={deck}
-                    showClientBadge={showClientBadge}
-                    onClick={() => setSelectedDeck(deck)}
-                  />
-                ))}
-              </div>
-            )
+            <>
+              <ClientTagStrip
+                facets={clientFacets}
+                loading={loadingClientFacets}
+                activeTag={clientTag}
+                onSelect={setClientTag}
+                onClear={() => setClientTag(null)}
+              />
+              {loadingDecks || loadingClients || loadingClientTag ? (
+                <LoadingGrid />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {displayedDecks.length === 0 && (
+                    <EmptyState
+                      icon={<Icon.Presentation />}
+                      title={clientFiltered ? 'Nenhum deck com essa tag' : 'Sem decks para este cliente'}
+                      subtitle={
+                        clientFiltered
+                          ? 'Clique em "limpar filtro" pra ver todos os decks do cliente'
+                          : 'A pasta deste cliente ainda não tem audience discoveries de 2025+ indexadas'
+                      }
+                    />
+                  )}
+                  {displayedDecks.map((deck) => (
+                    <DeckCard
+                      key={deck.deck_id}
+                      deck={deck}
+                      showClientBadge={showClientBadge}
+                      onClick={() => setSelectedDeck(deck)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Footer */}

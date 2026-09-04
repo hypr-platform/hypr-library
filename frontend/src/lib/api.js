@@ -72,8 +72,12 @@ export const api = {
   deck: (deckId) => request(`/deck/${deckId}`),
   // Tags por slide (solução / feature / audiência) geradas no sync
   deckTags: (deckId) => request(`/deck/${deckId}/tags`),
-  tags: (category = null) =>
-    request(`/tags${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+  tags: (category = null, clientFilter = null) => {
+    const q = [];
+    if (category) q.push(`category=${encodeURIComponent(category)}`);
+    if (clientFilter) q.push(`client=${encodeURIComponent(clientFilter)}`);
+    return request(`/tags${q.length ? `?${q.join('&')}` : ''}`);
+  },
   tagAnalytics: () => request('/tags/analytics'),
   decksByTag: (tag, clientFilter = null, limit = 50) =>
     request(

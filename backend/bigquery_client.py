@@ -265,16 +265,19 @@ class BigQueryClient:
         rows = list(self.client.query(query).result())
         return int(rows[0]["cnt"]) if rows else 0
 
-    def list_tag_facets(self, category: Optional[str] = None) -> list[dict]:
-        """Tags distintas com contagem de decks — pra filtro lateral."""
+    def list_tag_facets(self, category: Optional[str] = None, client_filter: Optional[str] = None) -> list[dict]:
+        """Tags distintas com contagem de decks — global ou de um cliente."""
         cat_clause = "AND category = @category" if category else ""
+        client_clause = "AND client = @client" if client_filter else ""
         params = []
         if category:
             params.append(bigquery.ScalarQueryParameter("category", "STRING", category))
+        if client_filter:
+            params.append(bigquery.ScalarQueryParameter("client", "STRING", client_filter))
         query = f"""
         SELECT category, tag, COUNT(DISTINCT deck_id) AS deck_count
         FROM `{self.tbl_tags}`
-        WHERE category != '_notags' {cat_clause}
+        WHERE category != '_notags' {cat_clause} {client_clause}
         GROUP BY category, tag
         ORDER BY category, deck_count DESC, tag
         """

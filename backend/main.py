@@ -7,7 +7,7 @@ Endpoints:
   GET  /decks?client=X          - Lista decks de um cliente
   GET  /deck/{deck_id}          - Metadata + preview URL de 1 deck
   POST /search                  - Busca semântica { query: str, client?: str, limit?: int }
-  GET  /tags?category=X         - Facetas de tags (solucao | feature | audiencia) com contagem
+  GET  /tags?category=X&client=Y - Facetas de tags (global ou de um cliente) (solucao | feature | audiencia) com contagem
   GET  /tags/decks?tag=X        - Decks que têm a tag, com slides onde aparece
   GET  /tags/analytics          - Tags por cliente (dados da aba Analytics)
   GET  /deck/{deck_id}/tags     - Tags por slide de 1 deck
@@ -329,7 +329,8 @@ def biblioteca_data(req):
     # Facetas de tags
     if path == "/tags" and req.method == "GET":
         category = req.args.get("category")
-        tags = get_bq().list_tag_facets(category=category)
+        client_filter = req.args.get("client")
+        tags = get_bq().list_tag_facets(category=category, client_filter=client_filter)
         return json_response({"tags": tags}, origin=origin)
 
     # Analytics de tags por cliente
