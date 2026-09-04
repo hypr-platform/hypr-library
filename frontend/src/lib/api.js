@@ -70,6 +70,16 @@ export const api = {
   recent: (limit = 20) => request(`/recent?limit=${limit}`),
   decks: (client) => request(`/decks?client=${encodeURIComponent(client)}`),
   deck: (deckId) => request(`/deck/${deckId}`),
+  // Tags por slide (solução / feature / audiência) geradas no sync
+  deckTags: (deckId) => request(`/deck/${deckId}/tags`),
+  tags: (category = null) =>
+    request(`/tags${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+  decksByTag: (tag, clientFilter = null, limit = 50) =>
+    request(
+      `/tags/decks?tag=${encodeURIComponent(tag)}` +
+        (clientFilter ? `&client=${encodeURIComponent(clientFilter)}` : '') +
+        `&limit=${limit}`
+    ),
   search: (query, clientFilter = null, limit = 20) =>
     request('/search', {
       method: 'POST',

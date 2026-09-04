@@ -95,6 +95,7 @@ Recarrega a lista de compartilhamentos. A SA deve aparecer como "biblioteca-hypr
 Acessa cada link e clica em **Enable** se não estiver habilitado:
 
 - Drive API: https://console.cloud.google.com/apis/library/drive.googleapis.com?project=site-hypr
+- Slides API (tags por slide): https://console.cloud.google.com/apis/library/slides.googleapis.com?project=site-hypr
 - Vertex AI API: https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=site-hypr
 - BigQuery API: https://console.cloud.google.com/apis/library/bigquery.googleapis.com?project=site-hypr
 - Cloud Functions API: https://console.cloud.google.com/apis/library/cloudfunctions.googleapis.com?project=site-hypr
@@ -158,6 +159,20 @@ CREATE TABLE `site-hypr.biblioteca.decks_embeddings` (
   embedded_at TIMESTAMP NOT NULL
 )
 CLUSTER BY deck_id;
+
+-- Tags por slide (solução / feature / audiência) — geradas em backend/tagging.py
+CREATE TABLE `site-hypr.biblioteca.decks_slide_tags` (
+  deck_id STRING NOT NULL,
+  client STRING,
+  slide_index INT64 NOT NULL,        -- 1-based, ordem do Slides API
+  slide_object_id STRING,            -- objectId do slide → deep-link #slide=id.X no preview
+  category STRING NOT NULL,          -- 'solucao' | 'feature' | 'audiencia' | '_notags'
+  tag STRING NOT NULL,               -- nome canônico (TAXONOMY) ou nome da audiência
+  detail STRING,                     -- volumetria / redes / eixo
+  source STRING,                     -- 'rules' | 'llm'
+  tagged_at TIMESTAMP NOT NULL
+)
+CLUSTER BY client, category, tag;
 
 -- Index vetorial pra VECTOR_SEARCH performático
 CREATE VECTOR INDEX biblioteca_embeddings_idx
@@ -248,6 +263,21 @@ Esse sync vai:
 4. Extrair texto de cada deck
 5. Gerar embedding via Vertex AI
 6. Salvar embedding no BigQuery
+7. Gerar tags por slide (solução/feature por regra; audiência via Gemini, com fallback heurístico)
+
+Decks que **já estavam indexados** antes do tagging existir não são reprocessados pelo
+`/sync/embeddings`. Pra eles, roda o backfill até `remaining` chegar a 0:
+
+```bash
+curl -X POST "$FUNCTION_URL/sync/tags" -H "Authorization: Bearer $SYNC_SECRET"
+```
+
+Pra re-taggear tudo depois de mudar a `TAXONOMY` em `backend/tagging.py`:
+
+```sql
+DELETE FROM `site-hypr.biblioteca.decks_slide_tags` WHERE TRUE;
+```
+e chama `/sync/tags` de novo (20 decks por chamada, cabe no timeout).
 
 **Tempo estimado:** 30-90 min na primeira vez (depende de quantos decks). Roda em background como Cloud Scheduler job depois.
 

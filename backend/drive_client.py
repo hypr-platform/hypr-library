@@ -44,6 +44,15 @@ class DriveClient:
         )
         self._creds = credentials
         self.service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        # Slides API aceita o scope drive.readonly — não precisa de scope extra,
+        # só habilitar a API no projeto (ver SETUP.md ETAPA 2).
+        self._slides = None
+
+    @property
+    def slides(self):
+        if self._slides is None:
+            self._slides = build("slides", "v1", credentials=self._creds, cache_discovery=False)
+        return self._slides
 
     def _with_retry(self, func, max_retries=3):
         """Retry com backoff exponencial pra Drive API rate limits."""
@@ -181,6 +190,95 @@ class DriveClient:
         except Exception as e:
             log.warning(f"Falha ao extrair pptx {file_id}: {e}")
             return ""
+
+    # ------------------------------------------------------------
+    # Extração POR SLIDE (usada pelo tagging)
+    # Retorna [{"index": 1-based, "object_id": str|None, "text": str}]
+    # ------------------------------------------------------------
+    @staticmethod
+    def _slide_text_from_elements(elements: list) -> str:
+        """Percorre pageElements (inclusive grupos e tabelas) e junta textRuns."""
+        parts = []
+
+        def walk(els):
+            for el in els or []:
+                if "shape" in el:
+                    for te in (el["shape"].get("text") or {}).get("textElements", []):
+                        run = te.get("textRun")
+                        if run and run.get("content"):
+                            parts.append(run["content"])
+                elif "table" in el:
+                    for row in el["table"].get("tableRows", []):
+                        for cell in row.get("tableCells", []):
+                            for te in (cell.get("text") or {}).get("textElements", []):
+                                run = te.get("textRun")
+                                if run and run.get("content"):
+                                    parts.append(run["content"])
+                elif "elementGroup" in el:
+                    walk(el["elementGroup"].get("children", []))
+
+        walk(elements)
+        return "".join(parts)
+
+    def extract_slides_from_slides(self, file_id: str) -> list[dict]:
+        """Google Slides → um item por slide, com objectId (pra deep-link #slide=id.X)."""
+        def call():
+            return self.slides.presentations().get(
+                presentationId=file_id,
+                fields="slides(objectId,pageElements)",
+            ).execute()
+
+        try:
+            pres = self._with_retry(call)
+        except Exception as e:
+            log.warning(f"[Slides] Falha em presentations.get {file_id}: {e}")
+            return []
+
+        out = []
+        for i, slide in enumerate(pres.get("slides", []), start=1):
+            out.append({
+                "index": i,
+                "object_id": slide.get("objectId"),
+                "text": self._slide_text_from_elements(slide.get("pageElements", [])),
+            })
+        return out
+
+    def extract_slides_from_pptx(self, file_id: str) -> list[dict]:
+        try:
+            from pptx import Presentation
+
+            buf = io.BytesIO()
+            req = self.service.files().get_media(fileId=file_id)
+            downloader = MediaIoBaseDownload(buf, req)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            buf.seek(0)
+
+            out = []
+            for i, slide in enumerate(Presentation(buf).slides, start=1):
+                texts = [sh.text for sh in slide.shapes if hasattr(sh, "text") and sh.text]
+                out.append({"index": i, "object_id": None, "text": "\n".join(texts)})
+            return out
+        except Exception as e:
+            log.warning(f"[Slides] Falha ao extrair pptx por slide {file_id}: {e}")
+            return []
+
+    def extract_slides(self, file_id: str, mime_type: str, fallback_text: str = "") -> list[dict]:
+        """
+        Roteador por slide. Pra PDF (e qualquer falha) usa o texto plano:
+        o export text/plain separa páginas com form feed (\\f).
+        """
+        slides: list[dict] = []
+        if mime_type == MIME_SLIDES:
+            slides = self.extract_slides_from_slides(file_id)
+        elif mime_type == MIME_PPTX:
+            slides = self.extract_slides_from_pptx(file_id)
+
+        if not slides and fallback_text:
+            pages = [p for p in fallback_text.split("\f") if p.strip()] or [fallback_text]
+            slides = [{"index": i, "object_id": None, "text": p} for i, p in enumerate(pages, 1)]
+        return slides
 
     def extract_text(self, file_id: str, mime_type: str) -> str:
         """Roteador de extração baseado no mime type."""

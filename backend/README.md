@@ -103,7 +103,28 @@ gcloud scheduler jobs create http biblioteca-resync \
 | GET | `/decks?client=X` | OAuth @hypr.mobi | Decks de um cliente |
 | GET | `/deck/{id}` | OAuth @hypr.mobi | Metadata de 1 deck |
 | POST | `/search` | OAuth @hypr.mobi | Busca semântica |
+| GET | `/tags?category=X` | OAuth @hypr.mobi | Facetas de tags (`solucao`, `feature`, `audiencia`) com nº de decks |
+| GET | `/tags/decks?tag=X&client=Y` | OAuth @hypr.mobi | Decks que têm a tag, com os slides onde aparece |
+| GET | `/deck/{id}/tags` | OAuth @hypr.mobi | Tags por slide de 1 deck |
 | POST | `/sync` | Bearer SYNC_SECRET | Trigger reindex |
+| POST | `/sync/metadata` | Bearer SYNC_SECRET | Fase 1: lista pastas + decks |
+| POST | `/sync/embeddings` | Bearer SYNC_SECRET | Fase 2: texto + embedding + tags (batch) |
+| POST | `/sync/tags` | Bearer SYNC_SECRET | Fase 3: backfill/re-tag por slide (batch) |
+| GET | `/sync/status` | público | Progresso (inclui `tags_pending`) |
+
+### Tags por slide (`tagging.py`)
+
+Cada slide recebe tags em três categorias:
+
+- **solucao** — core product mostrado no slide: `O2O`, `OOH Amplifier`, `RMN Digital`, `GroundFlow · NF-e / Split + Lift / Signals / Patterns`, `HYPR Metadata`, `Explorer`, `Mapeamento de places`…
+- **feature** — complemento: `Brand Lift Survey`, `PDOOH`, `Downloaded Apps`, `Tap To Map`, `Match Content`, `Free Form`, `Click-to-Calendar`, `Dynamic Ads`, `Max Attention`…
+- **audiencia** — nome do cluster como aparece no slide: `Luxo recorrente`, `Fluxo rodoviário`, `Decisores de Marketing`, `Varejo de Bairro`…
+
+Soluções/features são regex sobre o texto normalizado (`TAXONOMY`). Audiências usam Gemini
+(`TAGGING_MODEL`, default `gemini-2.0-flash`) só nos slides de audiência; se o LLM falhar ou
+`TAGGING_USE_LLM=0`, cai numa heurística de layout (linha de título acima da volumetria).
+
+Teste offline sem GCP: `python tagging.py deck.txt` (slides separados por linha `-----`).
 
 ## Desenvolvimento local
 

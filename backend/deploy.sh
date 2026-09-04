@@ -48,6 +48,11 @@ else
   echo "✓ NAVI_API_KEY carregado do Secret Manager (compartilhado com o report hub)"
 fi
 
+# Tagging por slide (tagging.py): modelo Gemini no Vertex e liga/desliga o LLM.
+# Se o LLM estiver desligado ou indisponível, cai na heurística por regra.
+TAGGING_MODEL="${TAGGING_MODEL:-gemini-2.0-flash}"
+TAGGING_USE_LLM="${TAGGING_USE_LLM:-1}"
+
 # ===== DEPLOY =====
 echo "🚀 Deploying ${FUNCTION_NAME} to ${REGION}..."
 
@@ -63,7 +68,7 @@ gcloud functions deploy "$FUNCTION_NAME" \
   --memory=512Mi \
   --timeout=540s \
   --service-account="$SERVICE_ACCOUNT" \
-  --set-env-vars="GCP_PROJECT=${PROJECT},DRIVE_ROOT_FOLDER_ID=${DRIVE_ROOT_FOLDER_ID},BQ_DATASET=biblioteca,ALLOWED_HD=hypr.mobi,OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID},SYNC_SECRET=${SYNC_SECRET},NAVI_API_KEY=${NAVI_API_KEY}"
+  --set-env-vars="GCP_PROJECT=${PROJECT},GCP_REGION=${REGION},DRIVE_ROOT_FOLDER_ID=${DRIVE_ROOT_FOLDER_ID},BQ_DATASET=biblioteca,ALLOWED_HD=hypr.mobi,OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID},SYNC_SECRET=${SYNC_SECRET},NAVI_API_KEY=${NAVI_API_KEY},TAGGING_MODEL=${TAGGING_MODEL},TAGGING_USE_LLM=${TAGGING_USE_LLM}"
 
 # Pega o URL
 FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
@@ -78,6 +83,9 @@ echo "  $FUNCTION_URL"
 echo ""
 echo "Pra rodar o sync inicial:"
 echo "  curl -X POST '$FUNCTION_URL/sync' -H 'Authorization: Bearer $SYNC_SECRET'"
+echo ""
+echo "Pra taggear os decks já indexados (repete até remaining=0):"
+echo "  curl -X POST '$FUNCTION_URL/sync/tags' -H 'Authorization: Bearer $SYNC_SECRET'"
 echo ""
 echo "Pra adicionar Cloud Scheduler (resync diário às 6h):"
 echo "  gcloud scheduler jobs create http biblioteca-resync \\"

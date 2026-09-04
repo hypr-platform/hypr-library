@@ -19,6 +19,7 @@ class BigQueryClient:
         self.tbl_meta = f"{project}.{dataset}.decks_metadata"
         self.tbl_content = f"{project}.{dataset}.decks_content"
         self.tbl_emb = f"{project}.{dataset}.decks_embeddings"
+        self.tbl_tags = f"{project}.{dataset}.decks_slide_tags"
 
     # ============================================================
     # WRITE OPERATIONS (usado pelo sync)
@@ -105,9 +106,15 @@ class BigQueryClient:
         WHERE deck_id NOT IN (SELECT deck_id FROM `{staging}`)
         """
 
+        delete_tags = f"""
+        DELETE FROM `{self.tbl_tags}`
+        WHERE deck_id NOT IN (SELECT deck_id FROM `{staging}`)
+        """
+
         for sql, label in [
             (delete_emb, "embeddings"),
             (delete_content, "content"),
+            (delete_tags, "tags"),
             (delete_meta, "metadata"),
         ]:
             result = self.client.query(sql).result()
@@ -198,6 +205,125 @@ class BigQueryClient:
         query = f"SELECT COUNT(DISTINCT client) AS cnt FROM `{self.tbl_meta}`"
         rows = list(self.client.query(query).result())
         return int(rows[0]["cnt"]) if rows else 0
+
+    # ============================================================
+    # SLIDE TAGS (tagging.py)
+    # ============================================================
+    def replace_deck_tags(self, deck_id: str, rows: list[dict]):
+        """
+        Substitui as tags de UM deck (idempotente: delete + insert).
+        Se rows estiver vazio, insere um marcador `_notags` pra o deck não
+        voltar pra fila de pendentes a cada rodada.
+        """
+        del_job = self.client.query(
+            f"DELETE FROM `{self.tbl_tags}` WHERE deck_id = @deck_id",
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ScalarQueryParameter("deck_id", "STRING", deck_id)]
+            ),
+        )
+        del_job.result()
+
+        if not rows:
+            rows = [{
+                "deck_id": deck_id, "client": None, "slide_index": 0, "slide_object_id": None,
+                "category": "_notags", "tag": "_notags", "detail": "", "source": "rules",
+                "tagged_at": datetime.now(timezone.utc).isoformat(),
+            }]
+        job_config = bigquery.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_APPEND)
+        self.client.load_table_from_json(rows, self.tbl_tags, job_config=job_config).result()
+
+    def append_tags(self, rows: list[dict]):
+        """Append em lote (vários decks). Use replace_deck_tags pra reprocessar 1 deck."""
+        if not rows:
+            return
+        job_config = bigquery.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_APPEND)
+        self.client.load_table_from_json(rows, self.tbl_tags, job_config=job_config).result()
+        log.info(f"Append: {len(rows)} tags de slide")
+
+    def list_decks_without_tags(self, limit: int = 30) -> list[dict]:
+        """Decks com metadata mas sem nenhuma linha em slide_tags (backfill)."""
+        query = f"""
+        SELECT m.deck_id, m.client, m.title, m.mime_type
+        FROM `{self.tbl_meta}` m
+        LEFT JOIN (SELECT DISTINCT deck_id FROM `{self.tbl_tags}`) t ON m.deck_id = t.deck_id
+        WHERE t.deck_id IS NULL
+        ORDER BY m.modified_time DESC
+        LIMIT @lim
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("lim", "INT64", limit)]
+        )
+        return [dict(r) for r in self.client.query(query, job_config=job_config).result()]
+
+    def count_decks_without_tags(self) -> int:
+        query = f"""
+        SELECT COUNT(*) AS cnt
+        FROM `{self.tbl_meta}` m
+        LEFT JOIN (SELECT DISTINCT deck_id FROM `{self.tbl_tags}`) t ON m.deck_id = t.deck_id
+        WHERE t.deck_id IS NULL
+        """
+        rows = list(self.client.query(query).result())
+        return int(rows[0]["cnt"]) if rows else 0
+
+    def list_tag_facets(self, category: Optional[str] = None) -> list[dict]:
+        """Tags distintas com contagem de decks — pra filtro lateral."""
+        cat_clause = "AND category = @category" if category else ""
+        params = []
+        if category:
+            params.append(bigquery.ScalarQueryParameter("category", "STRING", category))
+        query = f"""
+        SELECT category, tag, COUNT(DISTINCT deck_id) AS deck_count
+        FROM `{self.tbl_tags}`
+        WHERE category != '_notags' {cat_clause}
+        GROUP BY category, tag
+        ORDER BY category, deck_count DESC, tag
+        """
+        rows = self.client.query(query, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
+        return [{"category": r["category"], "tag": r["tag"], "deck_count": int(r["deck_count"])} for r in rows]
+
+    def list_decks_by_tag(self, tag: str, client_filter: Optional[str] = None, limit: int = 50) -> list[dict]:
+        """Decks que têm a tag, com os slides onde ela aparece."""
+        params = [
+            bigquery.ScalarQueryParameter("tag", "STRING", tag.lower()),
+            bigquery.ScalarQueryParameter("lim", "INT64", limit),
+        ]
+        client_clause = ""
+        if client_filter:
+            client_clause = "AND m.client = @client"
+            params.append(bigquery.ScalarQueryParameter("client", "STRING", client_filter))
+        query = f"""
+        SELECT
+          m.deck_id, m.client, m.title, m.drive_url, m.thumbnail_url,
+          m.owner_name, m.owner_email, m.size_bytes, m.modified_time, m.mime_type,
+          ARRAY_AGG(STRUCT(t.slide_index, t.slide_object_id, t.category, t.detail) ORDER BY t.slide_index) AS slides
+        FROM `{self.tbl_tags}` t
+        JOIN `{self.tbl_meta}` m ON m.deck_id = t.deck_id
+        WHERE LOWER(t.tag) = @tag {client_clause}
+        GROUP BY m.deck_id, m.client, m.title, m.drive_url, m.thumbnail_url,
+                 m.owner_name, m.owner_email, m.size_bytes, m.modified_time, m.mime_type
+        ORDER BY m.modified_time DESC NULLS LAST
+        LIMIT @lim
+        """
+        rows = self.client.query(query, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
+        out = []
+        for r in rows:
+            d = self._row_to_deck(r)
+            d["slides"] = [dict(s) for s in r["slides"]]
+            out.append(d)
+        return out
+
+    def get_deck_tags(self, deck_id: str) -> list[dict]:
+        """Tags de 1 deck, ordenadas por slide — pra chips no preview."""
+        query = f"""
+        SELECT slide_index, slide_object_id, category, tag, detail
+        FROM `{self.tbl_tags}`
+        WHERE deck_id = @deck_id AND category != '_notags'
+        ORDER BY slide_index, category, tag
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("deck_id", "STRING", deck_id)]
+        )
+        return [dict(r) for r in self.client.query(query, job_config=job_config).result()]
 
     # ============================================================
     # READ OPERATIONS (usado pelos endpoints)
