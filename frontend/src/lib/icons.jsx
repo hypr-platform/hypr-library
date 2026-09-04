@@ -153,6 +153,7 @@ export const Icon = {
     </>
   ),
   Chart: make(
+    18,
     <>
       <path d="M3 3v18h18" />
       <rect x="7" y="12" width="3" height="6" rx="0.5" />
