@@ -2,10 +2,28 @@ import { useState, useEffect } from 'react';
 import { Icon } from '../lib/icons.jsx';
 import { gradientFor, formatBytes, formatDate } from '../lib/utils.js';
 import { HyprLogo } from './HyprLogo.jsx';
+import { api } from '../lib/api.js';
 
 export function PreviewModal({ deck, onClose }) {
   const [copied, setCopied] = useState(false);
   const [iframeError, setIframeError] = useState(false);
+  const [tags, setTags] = useState([]);
+  const [activeSlide, setActiveSlide] = useState(null); // objectId do slide clicado
+
+  // Carrega tags por slide do deck
+  useEffect(() => {
+    if (!deck?.deck_id) return;
+    let cancelled = false;
+    setTags([]);
+    setActiveSlide(null);
+    api
+      .deckTags(deck.deck_id)
+      .then((r) => !cancelled && setTags(r?.tags || []))
+      .catch(() => !cancelled && setTags([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [deck?.deck_id]);
 
   useEffect(() => {
     const onEsc = (e) => e.key === 'Escape' && onClose();
@@ -21,10 +39,17 @@ export function PreviewModal({ deck, onClose }) {
     setTimeout(() => setCopied(false), 1800);
   };
 
-  // Constrói URL de embed do Google Slides
-  const slidesEmbedUrl = deck.drive_url
+  // Constrói URL de embed do Google Slides (com deep-link pro slide ativo)
+  const baseEmbedUrl = deck.drive_url
     ? deck.drive_url.replace('/edit', '/preview').replace('/view', '/preview')
     : null;
+  const slidesEmbedUrl =
+    baseEmbedUrl && activeSlide
+      ? `${baseEmbedUrl.split('#')[0]}#slide=id.${activeSlide}`
+      : baseEmbedUrl;
+
+  // Agrupa tags por categoria, sem repetir nome; guarda o 1º slide de cada tag
+  const grouped = groupTags(tags);
 
   return (
     <div
@@ -87,6 +112,26 @@ export function PreviewModal({ deck, onClose }) {
             )}
           </div>
 
+          {/* Tags por slide */}
+          {(grouped.solucao.length || grouped.feature.length || grouped.audiencia.length) > 0 && (
+            <div className="px-4 lg:px-6 pt-5 flex flex-col gap-3">
+              <TagRow
+                label="SOLUÇÕES & FEATURES"
+                items={[...grouped.solucao, ...grouped.feature]}
+                tone="cyan"
+                active={activeSlide}
+                onPick={setActiveSlide}
+              />
+              <TagRow
+                label="AUDIÊNCIAS"
+                items={grouped.audiencia}
+                tone="amber"
+                active={activeSlide}
+                onPick={setActiveSlide}
+              />
+            </div>
+          )}
+
           {/* Metadata */}
           <div className="px-4 lg:px-6 py-5 grid grid-cols-2 gap-x-6 gap-y-4">
             <MetaField
@@ -146,6 +191,58 @@ function MetaField({ icon, label, value, iconColor = 'text-ink-400' }) {
         <div className="text-[13px] text-ink-900 dark:text-ink-50 font-normal mt-0.5">
           {value}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function groupTags(tags) {
+  const out = { solucao: [], feature: [], audiencia: [] };
+  const seen = new Set();
+  for (const t of tags) {
+    if (!out[t.category]) continue;
+    const key = `${t.category}|${t.tag.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out[t.category].push({
+      tag: t.tag,
+      detail: t.detail,
+      slideIndex: t.slide_index,
+      objectId: t.slide_object_id,
+    });
+  }
+  return out;
+}
+
+function TagRow({ label, items, tone, active, onPick }) {
+  if (!items.length) return null;
+  const toneCls =
+    tone === 'amber'
+      ? 'border-amber-300/60 text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+      : 'border-hypr-cyan/40 text-hypr-cyan-dark dark:text-hypr-cyan hover:bg-hypr-cyan/5';
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-[0.16em] text-ink-400 font-medium mb-1.5">
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((it) => {
+          const isActive = active && it.objectId === active;
+          return (
+            <button
+              key={`${it.tag}-${it.slideIndex}`}
+              type="button"
+              title={`${it.detail ? it.detail + ' · ' : ''}slide ${it.slideIndex}`}
+              onClick={() => it.objectId && onPick(isActive ? null : it.objectId)}
+              className={`px-2 h-6 rounded-md border text-[11px] font-medium transition-colors ${toneCls} ${
+                isActive ? 'ring-1 ring-current' : ''
+              } ${it.objectId ? 'cursor-pointer' : 'cursor-default'}`}
+            >
+              {it.tag}
+              <span className="ml-1 text-[9px] opacity-60">#{it.slideIndex}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

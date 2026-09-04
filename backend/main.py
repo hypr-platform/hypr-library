@@ -7,7 +7,11 @@ Endpoints:
   GET  /decks?client=X          - Lista decks de um cliente
   GET  /deck/{deck_id}          - Metadata + preview URL de 1 deck
   POST /search                  - Busca semântica { query: str, client?: str, limit?: int }
+  GET  /tags?category=X         - Facetas de tags (solucao | feature | audiencia) com contagem
+  GET  /tags/decks?tag=X        - Decks que têm a tag, com slides onde aparece
+  GET  /deck/{deck_id}/tags     - Tags por slide de 1 deck
   POST /sync                    - Trigger reindex (autenticado via SYNC_SECRET)
+  POST /sync/tags               - Backfill de tags por slide (autenticado via SYNC_SECRET)
 
 Auth: Frontend envia Google ID token em `Authorization: Bearer <token>`.
       Função valida token contra OAUTH_CLIENT_ID e exige hd=hypr.mobi.
@@ -32,6 +36,7 @@ from sync import (
     run_full_sync,
     sync_metadata,
     sync_embeddings_batch,
+    sync_tags_batch,
     sync_status,
 )
 
@@ -246,6 +251,19 @@ def biblioteca_data(req):
             log.exception("Sync embeddings failed")
             return json_response({"error": str(e)}, 500, origin)
 
+    # Sync tags (autenticado via secret) — backfill / re-tag por batch
+    if path == "/sync/tags" and req.method == "POST":
+        if not verify_sync_secret(req):
+            return json_response({"error": "unauthorized"}, 401, origin)
+        body = req.get_json(silent=True) or {}
+        batch_size = int(body.get("batch_size", 20))
+        try:
+            result = sync_tags_batch(drive=get_drive(), bq=get_bq(), batch_size=batch_size)
+            return json_response(result, origin=origin)
+        except Exception as e:
+            log.exception("Sync tags failed")
+            return json_response({"error": str(e)}, 500, origin)
+
     # Sync status (público — só lê contadores) — útil pra acompanhar progresso
     if path == "/sync/status" and req.method == "GET":
         try:
@@ -306,6 +324,28 @@ def biblioteca_data(req):
             return json_response({"error": "client required"}, 400, origin)
         decks = get_bq().list_decks_for_client(client_name)
         return json_response({"client": client_name, "decks": decks}, origin=origin)
+
+    # Facetas de tags
+    if path == "/tags" and req.method == "GET":
+        category = req.args.get("category")
+        tags = get_bq().list_tag_facets(category=category)
+        return json_response({"tags": tags}, origin=origin)
+
+    # Decks por tag
+    if path == "/tags/decks" and req.method == "GET":
+        tag = (req.args.get("tag") or "").strip()
+        if not tag:
+            return json_response({"error": "tag required"}, 400, origin)
+        client_filter = req.args.get("client")
+        limit = int(req.args.get("limit", 50))
+        decks = get_bq().list_decks_by_tag(tag, client_filter=client_filter, limit=limit)
+        return json_response({"tag": tag, "decks": decks, "count": len(decks)}, origin=origin)
+
+    # Tags de 1 deck
+    if path.startswith("/deck/") and path.endswith("/tags") and req.method == "GET":
+        deck_id = path.split("/")[2]
+        tags = get_bq().get_deck_tags(deck_id)
+        return json_response({"deck_id": deck_id, "tags": tags}, origin=origin)
 
     # Detalhe de 1 deck
     if path.startswith("/deck/") and req.method == "GET":
